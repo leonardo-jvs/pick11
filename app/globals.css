@@ -1,0 +1,79 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/bebas-neue/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Bebas Neue", sans-serif;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background-color: #0a0f0d;
+  color: #f3f6f4;
+  min-height: 100dvh;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+::selection {
+  background-color: rgba(227, 179, 79, 0.3);
+  color: #f3f6f4;
+}
+
+/* Scrollbar discreta, alinhada ao dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #233029;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #37453d;
+}
+
+/* Assinatura visual: grid de marcadores táticos (posições de um quadro tático), 
+   usado como textura ambiente em telas de baixa densidade de informação */
+.tactics-field {
+  background-image: radial-gradient(circle, rgba(159, 173, 165, 0.14) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
