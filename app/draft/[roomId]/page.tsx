@@ -153,9 +153,9 @@ export default function DraftPage() {
 
   return (
     <main className="flex h-dvh w-full flex-col overflow-hidden bg-base">
-      <div className="mx-auto flex h-full w-full max-w-[1680px] flex-col overflow-hidden px-4 py-2.5 lg:px-6">
+      <div className="mx-auto flex h-full w-full max-w-[1680px] flex-col overflow-hidden px-[clamp(10px,1.6vw,24px)] py-[clamp(6px,1vh,10px)]">
         {/* Faixa superior compartilhada: logo + modo da sala */}
-        <div className="mb-2 flex shrink-0 items-center justify-between">
+        <div className="mb-[clamp(4px,0.7vh,8px)] flex shrink-0 items-center justify-between">
           <p className="font-display text-sm tracking-widest text-gold">PICK11</p>
           <div className="flex items-center gap-1.5 rounded-pill border border-border-subtle bg-surface px-2.5 py-1 font-sans text-[10px] text-text-tertiary">
             {hideOverall ? <EyeOff size={11} className="text-warning" /> : <Eye size={11} className="text-teal-bright" />}
@@ -163,18 +163,19 @@ export default function DraftPage() {
           </div>
         </div>
 
-        {/* Duas colunas: painel do usuário (30%) + Draft (70%) */}
-        <div className="flex min-h-0 flex-1 gap-3">
+        {/* Uma coluna no celular (campinho em cima, Draft embaixo) — duas colunas lado a lado a partir de md: */}
+        <div className="flex min-h-0 flex-1 flex-col gap-[clamp(4px,0.7vh,12px)] md:flex-row">
           {/* ESQUERDA — fixo, toda a informação do usuário */}
           {selfParticipant && (
-            <aside className="flex w-[30%] min-w-[280px] shrink-0 flex-col gap-2 overflow-hidden">
+            <aside className="flex max-h-[24vh] shrink-0 flex-col gap-[clamp(3px,0.6vh,8px)] overflow-hidden md:max-h-none md:w-[30%] md:min-w-[220px] lg:min-w-[260px]">
               <FormationPitch
                 formation={selfParticipant.tactics.formation}
                 filledSlots={selfFilledSlots}
                 tactics={selfParticipant.tactics}
+                responsive
                 className="min-h-0 flex-1"
               />
-              <div className="grid shrink-0 grid-cols-2 gap-1.5">
+              <div className="hidden shrink-0 grid-cols-2 gap-1.5 md:grid">
                 <div className="rounded-card border border-border-subtle bg-surface p-2 text-center">
                   <p className="font-sans text-[9px] text-text-tertiary">Formação</p>
                   <p className="font-mono text-sm font-bold text-text-primary">{selfParticipant.tactics.formation}</p>
@@ -192,7 +193,7 @@ export default function DraftPage() {
                   <p className="font-mono text-sm font-bold text-text-primary">{selfCompatStars ? "★".repeat(selfCompatStars) : "—"}</p>
                 </div>
               </div>
-              <div className="shrink-0 rounded-card border border-border-subtle bg-surface p-2 text-center font-sans text-[10px] text-text-tertiary">
+              <div className="hidden shrink-0 rounded-card border border-border-subtle bg-surface p-2 text-center font-sans text-[10px] text-text-tertiary md:block">
                 <span className="text-text-secondary">Ataque</span> {selfParticipant.tactics.attackStyle}
                 <span className="mx-1.5 text-border-strong">·</span>
                 <span className="text-text-secondary">Defesa</span> {selfParticipant.tactics.defenseStyle}
@@ -204,7 +205,7 @@ export default function DraftPage() {
           <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div
               className={cn(
-                "shrink-0 rounded-lg border px-3 py-2 transition-colors duration-300",
+                "shrink-0 rounded-lg border px-[clamp(8px,1vw,12px)] py-[clamp(5px,0.8vh,8px)] transition-colors duration-300",
                 isSelfTurn ? "border-gold shadow-glow-gold" : "border-border-subtle"
               )}
             >
@@ -246,8 +247,8 @@ export default function DraftPage() {
               </div>
             </div>
 
-            <div className={cn("my-2 min-h-0 flex-1 transition-all duration-300", !isSelfTurn && "opacity-60 grayscale")}>
-              <div className="grid h-full grid-cols-3 grid-rows-2 gap-2">
+            <div className={cn("my-[clamp(4px,0.7vh,8px)] min-h-0 flex-1 transition-all duration-300", !isSelfTurn && "opacity-60 grayscale")}>
+              <div className="grid h-full grid-cols-3 grid-rows-2 gap-[clamp(4px,0.8vmin,8px)]">
                 <AnimatePresence mode="popLayout">
                   {candidateCards.map((card) => {
                     const eligible = isEligible(card.id);
@@ -290,8 +291,8 @@ export default function DraftPage() {
           </section>
         </div>
 
-        {/* Feed das últimas escolhas — histórico em tempo real, some sozinho após alguns segundos */}
-        <div className="mt-2 flex h-[52px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border-subtle bg-surface/95 px-4">
+        {/* Feed das últimas escolhas — histórico em tempo real, some sozinho após alguns segundos (escondido no celular pra sobrar espaço pras cartas) */}
+        <div className="mt-2 hidden h-[52px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border-subtle bg-surface/95 px-4 md:flex">
           <AnimatePresence mode="wait">
             {lastPickFeed ? (
               <motion.div

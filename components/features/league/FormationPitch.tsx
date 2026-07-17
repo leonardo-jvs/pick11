@@ -35,6 +35,8 @@ export function FormationPitch({
   boostedPositions,
   boostDelta,
   size = "md",
+  /** Só usado pelo Draft — escala com a viewport (clamp) em vez de um tamanho fixo, pra caber em qualquer resolução sem precisar de zoom. Não afeta nenhuma outra tela. */
+  responsive = false,
   className,
 }: {
   formation: Formation;
@@ -49,20 +51,26 @@ export function FormationPitch({
   boostedPositions?: Position[];
   boostDelta?: number;
   size?: "sm" | "md";
+  responsive?: boolean;
   className?: string;
 }) {
   const resolvedSlots = filledSlots ?? (players ? assignPlayersToSlots(players, formation) : {});
   const slotLabels = new Map(getFormationSlots(formation).map((s) => [s.id, s.label]));
   const rows = ROW_LAYOUT[formation];
 
-  const cardW = size === "sm" ? "w-[58px]" : "w-[76px]";
-  const nameSize = size === "sm" ? "text-[9px]" : "text-[10.5px]";
-  const overallSize = size === "sm" ? "text-[10px]" : "text-xs";
+  const cardW = responsive ? "w-[clamp(34px,6.4vw,76px)]" : size === "sm" ? "w-[58px]" : "w-[76px]";
+  const nameSize = responsive ? "text-[clamp(6.5px,1.05vh,10.5px)]" : size === "sm" ? "text-[9px]" : "text-[10.5px]";
+  const overallSize = responsive ? "text-[clamp(7px,1.25vh,12px)]" : size === "sm" ? "text-[10px]" : "text-xs";
+  const labelSize = responsive ? "text-[clamp(5.5px,0.85vh,8px)]" : "text-[8px]";
+  const chipPad = responsive ? "px-[clamp(1px,0.35vw,4px)] py-[clamp(1px,0.5vh,6px)]" : "px-1 py-1.5";
+  const rootPad = responsive ? "p-[clamp(4px,0.9vh,10px)]" : "p-2.5";
+  const rootGap = responsive ? "gap-[clamp(2px,0.7vh,8px)]" : "gap-2";
+  const rowGap = responsive ? "gap-[clamp(2px,0.4vw,6px)]" : "gap-1.5";
 
   return (
-    <div className={cn("tactics-field flex flex-col justify-between gap-2 rounded-card border border-border-subtle bg-surface p-2.5", className)}>
+    <div className={cn("tactics-field flex flex-col justify-between rounded-card border border-border-subtle bg-surface", rootGap, rootPad, className)}>
       {rows.map(({ row, slotIds }) => (
-        <div key={row} className="flex items-center justify-center gap-1.5">
+        <div key={row} className={cn("flex items-center justify-center", rowGap)}>
           {slotIds.map((slotId) => {
             const player = resolvedSlots[slotId];
             const label = slotLabels.get(slotId) ?? "";
@@ -75,7 +83,8 @@ export function FormationPitch({
                 key={slotId}
                 className={cn(
                   cardW,
-                  "flex shrink-0 flex-col items-center gap-0.5 rounded-md border px-1 py-1.5 text-center transition-colors",
+                  chipPad,
+                  "flex shrink-0 flex-col items-center gap-0.5 rounded-md border text-center transition-colors",
                   player
                     ? isBoosted
                       ? isPenalty
@@ -85,7 +94,7 @@ export function FormationPitch({
                     : "border-border-subtle bg-surface-elevated"
                 )}
               >
-                <span className="font-mono text-[8px] leading-none text-text-tertiary">{label}</span>
+                <span className={cn("font-mono leading-none text-text-tertiary", labelSize)}>{label}</span>
                 {player ? (
                   <>
                     <span className={cn("w-full truncate font-sans font-medium leading-tight text-text-primary", nameSize)}>
@@ -94,7 +103,7 @@ export function FormationPitch({
                     {hideOverall ? (
                       <span className={cn("font-mono font-bold leading-none text-text-tertiary", overallSize)}>???</span>
                     ) : isBoosted ? (
-                      <span className="flex items-center gap-0.5 font-mono text-[9px] leading-none">
+                      <span className={cn("flex items-center gap-0.5 font-mono leading-none", nameSize)}>
                         <span className="text-text-tertiary line-through">{player.overall}</span>
                         <span className={cn("font-bold", isPenalty ? "text-danger" : "text-success")}>
                           {Math.max(40, Math.min(99, player.overall + boostDelta!))}
@@ -105,7 +114,7 @@ export function FormationPitch({
                     )}
                   </>
                 ) : (
-                  <span className="font-sans text-[9px] leading-tight text-text-tertiary">vazio</span>
+                  <span className={cn("font-sans leading-tight text-text-tertiary", labelSize)}>vazio</span>
                 )}
               </div>
             );
