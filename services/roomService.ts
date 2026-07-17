@@ -30,7 +30,13 @@ export function createHostParticipant(name: string, clubName: string): RoomParti
   };
 }
 
-export async function createRoom(hostName: string, clubName: string, maxPlayers: number): Promise<Room> {
+export async function createRoom(
+  hostName: string,
+  clubName: string,
+  maxPlayers: number,
+  draftMode: Room["draftMode"] = "visible",
+  gameMode: Room["gameMode"] = "league"
+): Promise<Room> {
   await delay(500);
   const host = createHostParticipant(hostName, clubName);
   const resolvedMax = Math.min(Math.max(maxPlayers, 1), ROOM_CONFIG.MAX_PLAYERS);
@@ -41,6 +47,8 @@ export async function createRoom(hostName: string, clubName: string, maxPlayers:
     minPlayers: Math.min(ROOM_CONFIG.MIN_PLAYERS, resolvedMax),
     maxPlayers: resolvedMax,
     participants: [host],
+    draftMode,
+    gameMode,
     createdAt: new Date().toISOString(),
   };
 }
@@ -73,6 +81,8 @@ export async function joinRoomByCode(code: string, name: string, clubName: strin
     minPlayers: ROOM_CONFIG.MIN_PLAYERS,
     maxPlayers: ROOM_CONFIG.MAX_PLAYERS,
     participants: [...existing, self],
+    draftMode: "visible",
+    gameMode: "league",
     createdAt: new Date().toISOString(),
   };
 }

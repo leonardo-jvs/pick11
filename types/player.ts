@@ -4,6 +4,15 @@ export type Position = "GOL" | "ZAG" | "LAT" | "VOL" | "MEI" | "ATA";
 export type AttackStyle = "Posse" | "Contra-ataque" | "Cruzamentos";
 export type DefenseStyle = "Pressão alta" | "Bloco médio" | "Linha baixa";
 
+/**
+ * common = jogador atual do Brasileirão (carta padrão).
+ * prime = "Auge" — versão histórica de uma temporada marcante.
+ * legend = "Lendária" — ídolo histórico do futebol brasileiro.
+ * proclubs = "Pro Clubs" — jogador fictício inspirado no modo Pro Clubs, carta muito rara.
+ * Ausente = tratado como "common" (retrocompatível com dados antigos/fictícios).
+ */
+export type PlayerCategory = "common" | "prime" | "legend" | "proclubs";
+
 export interface Player {
   id: string;
   name: string;
@@ -15,6 +24,17 @@ export interface Player {
   attackStyle: AttackStyle;
   defenseStyle: DefenseStyle;
   physical: number; // 0–100, decai ao longo da liga
+  category?: PlayerCategory;
+  /** Só relevante para cartas "prime" (temporada retratada, ex: "2019") */
+  season?: string;
+  /**
+   * Identidade estável do atleta real, compartilhada entre todas as cartas
+   * dele (comum/Auge/Lendária). Ex: "arrascaeta" liga "Arrascaeta" (comum,
+   * Flamengo atual) e "Arrascaeta" (Auge, Flamengo 2022) — só uma das duas
+   * pode entrar na pool de uma mesma liga. Se omitido, o nome normalizado é
+   * usado como chave (suficiente quando o atleta só tem uma carta).
+   */
+  athleteKey?: string;
 }
 
 /**

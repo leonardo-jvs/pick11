@@ -31,7 +31,32 @@ export function isPlayerEligible(player: Player, formation: Formation, filledSlo
   return findBestSlot(player, formation, filledSlotIds) !== null;
 }
 
-/** Painel de formação: cada slot com o jogador que o preenche (ou vazio) */
+/**
+ * Posiciona uma lista de jogadores (sem slot pré-atribuído) nas coordenadas
+ * corretas da formação — usado sempre que só temos o elenco (ex: Pré-Partida,
+ * elenco de bots), nunca o mapeamento exato de slot que o Draft já tem. Cada
+ * jogador vai para a posição que melhor completa a formação, respeitando
+ * posição primária e secundárias (mesma regra do Draft).
+ */
+export function assignPlayersToSlots(players: Player[], formation: Formation): Record<string, Player> {
+  const slots = FORMATION_SLOTS[formation];
+  const filled: Record<string, Player> = {};
+  const filledSlotIds = new Set<string>();
+  let remaining = [...players];
+
+  for (const slot of slots) {
+    const candidate = remaining.find((p) => slot.acceptedPositions.includes(p.position));
+    const fallback = candidate ?? remaining.find((p) => (p.secondaryPositions ?? []).some((sp) => slot.acceptedPositions.includes(sp)));
+    const chosen = candidate ?? fallback;
+    if (chosen) {
+      filled[slot.id] = chosen;
+      filledSlotIds.add(slot.id);
+      remaining = remaining.filter((p) => p.id !== chosen.id);
+    }
+  }
+
+  return filled;
+}
 export function getFormationPanel(
   formation: Formation,
   filledSlots: Record<string, Player>

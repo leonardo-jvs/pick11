@@ -1,5 +1,6 @@
 import { Player, Position } from "@/types/player";
 import { generateId, randomBetween } from "@/lib/delay";
+import { getAllPlayers } from "@/services/playerRepository";
 
 const FIRST_NAMES = [
   "Caio", "Bruno", "Diego", "Marcos", "Igor", "Rodrigo", "Vitor", "Daniel", "Felipe", "Renato",
@@ -11,6 +12,19 @@ const LAST_NAMES = [
 ];
 
 const POSITION_POOL: Position[] = ["GOL", "ZAG", "ZAG", "LAT", "LAT", "VOL", "VOL", "MEI", "MEI", "ATA", "ATA"];
+
+/**
+ * Cria um Set de nomes "usados" já pré-populado com todos os atletas reais do
+ * banco de dados. Sem isso, um jogador fictício de preenchimento poderia por
+ * acaso sortear o mesmo nome de um atleta real (ex: "Hugo Souza") e criar um
+ * segundo "atleta" duplicado na liga — o mesmo problema que a exclusividade
+ * de cartas resolve para as versões comum/Auge/Lendária, só que pro lado dos
+ * nomes fictícios. Usar esta função em vez de `new Set()` sempre que for
+ * gerar jogadores de preenchimento para uma liga.
+ */
+export function createFillerNameGuard(): Set<string> {
+  return new Set(getAllPlayers().map((p) => p.name));
+}
 
 function randomName(usedNames: Set<string>): string {
   let name = "";

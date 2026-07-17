@@ -1,12 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Trophy } from "lucide-react";
+import { motion } from "framer-motion";
+import { Trophy, Medal, ChevronRight } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings, computeTopScorers, computeBestDefenses } from "@/services/leagueService";
+import { cn } from "@/lib/utils";
 
 export default function LeagueFinalPage() {
   const router = useRouter();
@@ -26,10 +28,15 @@ export default function LeagueFinalPage() {
 
   const standings = computeStandings(teams, matches, userTeam.id);
   const champion = standings[0];
+  const isChampion = champion?.isUserTeam;
   const userPosition = standings.findIndex((s) => s.teamId === userTeam.id) + 1;
   const topScorers = computeTopScorers(matches, 1);
   const bestDefenses = computeBestDefenses(standings, 1);
   const relegated = standings.slice(-4);
+  const isRelegated = userPosition > standings.length - 4;
+
+  const campaignColor = isChampion ? "text-gold" : userPosition <= 4 ? "text-success" : isRelegated ? "text-danger" : "text-text-primary";
+  const campaignLabel = isChampion ? "Campeão da temporada!" : userPosition <= 4 ? "Classificação continental" : isRelegated ? "Rebaixado" : "Temporada encerrada";
 
   function playAgain() {
     reset();
@@ -39,30 +46,42 @@ export default function LeagueFinalPage() {
   return (
     <Screen center>
       <div className="w-full text-center">
-        <Trophy className="mx-auto mb-3 text-gold" size={40} />
+        <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", duration: 0.6 }}>
+          <Trophy className="mx-auto mb-3 text-gold" size={44} />
+        </motion.div>
         <h1 className="font-display text-3xl tracking-wide text-text-primary">FIM DE LIGA</h1>
         <p className="mt-1 font-sans text-sm text-text-tertiary">Temporada encerrada</p>
 
-        <div className="mt-6 rounded-card border border-gold/40 bg-gold/10 p-5">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="mt-6 rounded-card border border-gold/40 bg-gradient-to-b from-gold/15 via-surface to-surface p-5 shadow-glow-gold"
+        >
           <p className="font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Campeão</p>
-          <p className="font-display text-2xl text-gold">{champion?.teamName ?? "—"}</p>
+          <p className="font-display text-3xl text-gold">{champion?.teamName ?? "—"}</p>
           <p className="font-mono text-xs text-text-tertiary">{champion?.points ?? 0} pontos</p>
-        </div>
+        </motion.div>
 
         <div className="mt-4 rounded-card border border-border-subtle bg-surface p-4">
           <p className="font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Sua campanha</p>
-          <p className="font-display text-xl text-text-primary">{userPosition}º lugar</p>
+          <p className={cn("font-display text-2xl", campaignColor)}>{userPosition}º lugar</p>
           <p className="font-mono text-xs text-text-tertiary">{userTeam.clubName}</p>
+          <p className={cn("mt-1 font-sans text-[11px] font-semibold", campaignColor)}>{campaignLabel}</p>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">Artilheiro</p>
+            <p className="mb-1 flex items-center justify-center gap-1 font-sans text-[10px] text-text-tertiary">
+              <Medal size={11} className="text-teal-bright" /> Artilheiro
+            </p>
             <p className="truncate font-sans text-sm font-semibold text-text-primary">{topScorers[0]?.playerName ?? "—"}</p>
             <p className="font-mono text-xs text-teal-bright">{topScorers[0]?.goals ?? 0} gols</p>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">Melhor defesa</p>
+            <p className="mb-1 flex items-center justify-center gap-1 font-sans text-[10px] text-text-tertiary">
+              <Medal size={11} className="text-teal-bright" /> Melhor defesa
+            </p>
             <p className="truncate font-sans text-sm font-semibold text-text-primary">{bestDefenses[0]?.teamName ?? "—"}</p>
             <p className="font-mono text-xs text-teal-bright">{bestDefenses[0]?.goalsConceded ?? 0} sofridos</p>
           </div>
@@ -81,6 +100,13 @@ export default function LeagueFinalPage() {
             ))}
           </div>
         </div>
+
+        <button
+          onClick={() => router.push(ROUTES.standings(room.id))}
+          className="mt-4 flex w-full items-center justify-center gap-1 font-sans text-xs text-text-tertiary transition-colors hover:text-text-primary"
+        >
+          Ver classificação completa <ChevronRight size={13} />
+        </button>
 
         <div className="mt-6 space-y-2">
           <Button fullWidth size="lg" onClick={playAgain}>

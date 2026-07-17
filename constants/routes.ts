@@ -18,4 +18,6 @@ export const ROUTES = {
   standings: (roomId: string) => `/standings/${roomId}`,
   stats: (roomId: string) => `/stats/${roomId}`,
   leagueFinal: (roomId: string) => `/league-final/${roomId}`,
+  cupBracket: (roomId: string) => `/cup-bracket/${roomId}`,
+  cupFinal: (roomId: string) => `/cup-final/${roomId}`,
 } as const;

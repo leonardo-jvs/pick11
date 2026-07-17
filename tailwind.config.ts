@@ -57,6 +57,17 @@ const config: Config = {
           DEFAULT: "#F5A623",
           dim: "#B87A1A",
         },
+        // Roxo — cartas "Auge" (temporadas históricas marcantes)
+        prime: {
+          DEFAULT: "#A855F7",
+          dim: "#6B21A8",
+          bright: "#D8B4FE",
+        },
+        // Fundo claro das cartas "Lendária" (ídolos históricos) — único ponto da interface com base clara
+        legend: {
+          bg: "#F3F0E8",
+          text: "#1A1712",
+        },
       },
       fontFamily: {
         display: ["var(--font-display)", "sans-serif"],
@@ -73,6 +84,8 @@ const config: Config = {
         "glow-teal": "0 0 0 1px rgba(47,224,190,0.4), 0 0 24px -4px rgba(47,224,190,0.35)",
         "glow-success": "0 0 0 1px rgba(74,222,128,0.45), 0 0 20px -4px rgba(74,222,128,0.4)",
         "glow-warning": "0 0 0 1px rgba(245,197,66,0.45), 0 0 20px -4px rgba(245,197,66,0.4)",
+        "glow-prime": "0 0 0 1px rgba(168,85,247,0.4), 0 0 20px -4px rgba(168,85,247,0.4)",
+        "glow-danger": "0 0 0 1px rgba(255,92,92,0.4), 0 0 20px -4px rgba(255,92,92,0.45)",
       },
       backgroundImage: {
         "pitch-dots":

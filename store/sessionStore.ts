@@ -2,11 +2,10 @@
 
 import { create } from "zustand";
 import { Room } from "@/types/room";
-import { Team } from "@/types/team";
+import { Team, Boost } from "@/types/team";
 import { Match } from "@/types/match";
 import { DraftState } from "@/types/draft";
-
-import { Boost } from "@/types/team";
+import { CupState } from "@/types/cup";
 
 interface SessionState {
   room: Room | null;
@@ -20,6 +19,10 @@ interface SessionState {
   pendingBoost: Boost;
   /** Quantas vezes cada boost já foi usado nesta temporada (limites em BOOST_USES) */
   boostUsage: Partial<Record<Boost, number>>;
+  /** Modo de jogo da sala — Liga (temporada completa) ou Copa (mata-mata curto) */
+  gameMode: "league" | "cup";
+  /** Só populado quando gameMode === "cup" */
+  cupState: CupState | null;
 
   setRoom: (room: Room) => void;
   updateParticipant: (participantId: string, patch: Partial<Room["participants"][number]>) => void;
@@ -33,6 +36,8 @@ interface SessionState {
   setCurrentRound: (round: number) => void;
   setPendingBoost: (boost: Boost) => void;
   recordBoostUse: (boost: Boost) => void;
+  setGameMode: (mode: "league" | "cup") => void;
+  setCupState: (cupState: CupState) => void;
   reset: () => void;
 
   userTeam: () => Team | null;
@@ -48,6 +53,8 @@ const initialState = {
   currentRound: 1,
   pendingBoost: "Nenhum" as Boost,
   boostUsage: {},
+  gameMode: "league" as const,
+  cupState: null,
 };
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -83,6 +90,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setPendingBoost: (boost) => set({ pendingBoost: boost }),
   recordBoostUse: (boost) =>
     set((state) => ({ boostUsage: { ...state.boostUsage, [boost]: (state.boostUsage[boost] ?? 0) + 1 } })),
+  setGameMode: (gameMode) => set({ gameMode }),
+  setCupState: (cupState) => set({ cupState }),
   reset: () => set({ ...initialState }),
 
   userTeam: () => {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Trophy, Swords } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -14,6 +14,9 @@ import { ROOM_CONFIG } from "@/constants/game";
 import { FANTASY_CLUB_NAME_SUGGESTIONS } from "@/mocks/clubs";
 import { createRoom } from "@/services/roomService";
 import { useSessionStore } from "@/store/sessionStore";
+import { DraftMode, GameMode } from "@/types/room";
+import { determineCupTier } from "@/services/cupService";
+import { cn } from "@/lib/utils";
 
 export default function CreateRoomPage() {
   const router = useRouter();
@@ -23,6 +26,8 @@ export default function CreateRoomPage() {
   const [playerName, setPlayerName] = useState("");
   const [clubName, setClubName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(8);
+  const [draftMode, setDraftMode] = useState<DraftMode>("visible");
+  const [gameMode, setGameMode] = useState<GameMode>("league");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +38,7 @@ export default function CreateRoomPage() {
     }
     setError(null);
     setIsCreating(true);
-    const room = await createRoom(playerName.trim(), clubName.trim(), maxPlayers);
+    const room = await createRoom(playerName.trim(), clubName.trim(), maxPlayers, draftMode, gameMode);
     setRoom(room);
     setSelfParticipantId(room.participants[0].id);
     router.push(ROUTES.lobby(room.id));
@@ -84,6 +89,86 @@ export default function CreateRoomPage() {
           max={ROOM_CONFIG.MAX_PLAYERS}
           onChange={setMaxPlayers}
         />
+
+        <div>
+          <p className="mb-1.5 font-sans text-sm text-text-secondary">Modo de jogo</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setGameMode("league")}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
+                gameMode === "league" ? "border-gold bg-gold/10" : "border-border-subtle bg-surface hover:border-border-strong"
+              )}
+            >
+              <Trophy size={18} className={gameMode === "league" ? "text-gold" : "text-text-tertiary"} />
+              <span className={cn("font-sans text-xs font-semibold", gameMode === "league" ? "text-gold" : "text-text-primary")}>
+                Liga
+              </span>
+              <span className="font-sans text-[10px] leading-snug text-text-tertiary">Temporada completa, 38 rodadas, turno e returno.</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setGameMode("cup")}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
+                gameMode === "cup" ? "border-teal bg-teal/10" : "border-border-subtle bg-surface hover:border-border-strong"
+              )}
+            >
+              <Swords size={18} className={gameMode === "cup" ? "text-teal-bright" : "text-text-tertiary"} />
+              <span className={cn("font-sans text-xs font-semibold", gameMode === "cup" ? "text-teal-bright" : "text-text-primary")}>
+                Copa
+              </span>
+              <span className="font-sans text-[10px] leading-snug text-text-tertiary">Grupos + mata-mata, rápida e direta.</span>
+            </button>
+          </div>
+          {gameMode === "cup" && (
+            <p className="mt-2 font-mono text-[10px] text-text-tertiary">
+              {(() => {
+                const tier = determineCupTier(maxPlayers);
+                return `${tier.totalTeams} equipes · ${tier.groupCount} grupos de 4 · mata-mata a partir das ${
+                  tier.firstKnockoutPhase === "semifinal" ? "semifinais" : "quartas de final"
+                }`;
+              })()}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p className="mb-1.5 font-sans text-sm text-text-secondary">Modo do Draft</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setDraftMode("visible")}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
+                draftMode === "visible" ? "border-gold bg-gold/10" : "border-border-subtle bg-surface hover:border-border-strong"
+              )}
+            >
+              <Eye size={18} className={draftMode === "visible" ? "text-gold" : "text-text-tertiary"} />
+              <span className={cn("font-sans text-xs font-semibold", draftMode === "visible" ? "text-gold" : "text-text-primary")}>
+                Over Visível
+              </span>
+              <span className="font-sans text-[10px] leading-snug text-text-tertiary">Overall de todos os jogadores sempre à vista.</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraftMode("hidden")}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
+                draftMode === "hidden" ? "border-gold bg-gold/10" : "border-border-subtle bg-surface hover:border-border-strong"
+              )}
+            >
+              <EyeOff size={18} className={draftMode === "hidden" ? "text-gold" : "text-text-tertiary"} />
+              <span className={cn("font-sans text-xs font-semibold", draftMode === "hidden" ? "text-gold" : "text-text-primary")}>
+                Over Oculto
+              </span>
+              <span className="font-sans text-[10px] leading-snug text-text-tertiary">
+                Overall escondido no Draft — decida pelo conhecimento de futebol.
+              </span>
+            </button>
+          </div>
+        </div>
 
         <Button variant="primary" size="lg" fullWidth isLoading={isCreating} onClick={handleCreate}>
           Criar Sala

@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Zap, Shield, HeartPulse, BedDouble, Check, Lock } from "lucide-react";
+import { Zap, Shield, HeartPulse, BedDouble, Check, Lock, GitBranch } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Button } from "@/components/ui/Button";
 import { Timer } from "@/components/ui/Timer";
-import { PitchView } from "@/components/features/pre-match/PitchView";
+import { FormationPitch } from "@/components/features/league/FormationPitch";
 import { ROUTES } from "@/constants/routes";
 import { SELECTABLE_BOOSTS, BOOST_USES, BOOST_POSITION_TARGETS, BOOST_OVERALL_BONUS, PRE_MATCH_CONFIG, LEAGUE_CONFIG } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings } from "@/services/leagueService";
+import { getCurrentFixtureForTeam, getPhaseLabel, computeGroupStandings } from "@/services/cupService";
 import { Boost } from "@/types/team";
 import { Position } from "@/types/player";
 import { cn, getPhysicalColorClass } from "@/lib/utils";
@@ -41,10 +42,13 @@ export default function PreMatchPage() {
   const schedule = useSessionStore((s) => s.schedule);
   const matches = useSessionStore((s) => s.matches);
   const currentRound = useSessionStore((s) => s.currentRound);
+  const cupState = useSessionStore((s) => s.cupState);
   const boostUsage = useSessionStore((s) => s.boostUsage);
   const setPendingBoost = useSessionStore((s) => s.setPendingBoost);
   const recordBoostUse = useSessionStore((s) => s.recordBoostUse);
   const userTeam = useSessionStore((s) => s.userTeam());
+
+  const isCup = room?.gameMode === "cup";
 
   // Uma vez escolhido, o bônus trava — nenhuma troca depois disso (item 5 da Sprint 6)
   const [lockedBoost, setLockedBoost] = useState<Boost | null>(null);
@@ -61,9 +65,29 @@ export default function PreMatchPage() {
     );
   }
 
-  const fixture = schedule.find((f) => f.round === currentRound && (f.homeId === userTeam.id || f.awayId === userTeam.id));
-  const opponent = fixture ? teams.find((t) => t.id === (fixture.homeId === userTeam.id ? fixture.awayId : fixture.homeId)) : null;
-  const isHome = fixture?.homeId === userTeam.id;
+  let opponent: (typeof teams)[number] | null = null;
+  let isHome = false;
+  let cupFixtureInfo: string | null = null;
+  let groupStandingPosition: number | null = null;
+
+  if (isCup && cupState) {
+    const fixture = getCurrentFixtureForTeam(cupState, userTeam.id);
+    opponent = fixture ? teams.find((t) => t.id === fixture.opponentId) ?? null : null;
+    isHome = fixture?.isHome ?? false;
+    cupFixtureInfo = fixture?.context ?? getPhaseLabel(cupState.phase);
+    if (cupState.phase === "groups") {
+      const group = cupState.groups.find((g) => g.teamIds.includes(userTeam.id));
+      if (group) {
+        const groupStandings = computeGroupStandings(group, teams, matches);
+        groupStandingPosition = groupStandings.findIndex((s) => s.teamId === userTeam.id) + 1;
+      }
+    }
+  } else {
+    const fixture = schedule.find((f) => f.round === currentRound && (f.homeId === userTeam.id || f.awayId === userTeam.id));
+    opponent = fixture ? teams.find((t) => t.id === (fixture.homeId === userTeam.id ? fixture.awayId : fixture.homeId)) ?? null : null;
+    isHome = fixture?.homeId === userTeam.id;
+  }
+
   const standings = computeStandings(teams, matches, userTeam.id);
   const position = standings.findIndex((s) => s.teamId === userTeam.id) + 1;
 
@@ -114,37 +138,54 @@ export default function PreMatchPage() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <p className="font-sans text-xs text-text-tertiary">
-              Rodada {currentRound} de {LEAGUE_CONFIG.TOTAL_ROUNDS}
+              {isCup ? cupFixtureInfo : `Rodada ${currentRound} de ${LEAGUE_CONFIG.TOTAL_ROUNDS}`}
             </p>
             <h1 className="font-display text-2xl tracking-wide text-text-primary">
               {userTeam.clubName} <span className="text-text-tertiary">{isHome ? "🏠" : "✈️"}</span> {opponent?.clubName ?? "—"}
             </h1>
+            {isCup && cupState && cupState.phase !== "groups" && (
+              <button
+                onClick={() => router.push(ROUTES.cupBracket(room.id))}
+                className="mt-1 flex items-center gap-1 font-sans text-[11px] text-teal-bright hover:underline"
+              >
+                <GitBranch size={11} /> Ver chaveamento
+              </button>
+            )}
           </div>
           <Timer seconds={PRE_MATCH_CONFIG.TIMER_SECONDS} resetKey={currentRound} onComplete={handleTimeout} size={64} />
         </div>
 
         <div className="mb-4 grid grid-cols-4 gap-2">
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">Rodada</p>
-            <p className="font-display text-lg text-text-primary">{currentRound}</p>
+            <p className="font-sans text-[10px] text-text-tertiary">{isCup ? "Fase" : "Rodada"}</p>
+            <p className="font-display text-lg leading-tight text-text-primary">
+              {isCup ? (cupState ? getPhaseLabel(cupState.phase) : "—") : currentRound}
+            </p>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">Classificação</p>
-            <p className="font-display text-lg text-teal-bright">{position}º</p>
+            <p className="font-sans text-[10px] text-text-tertiary">{isCup && cupState?.phase === "groups" ? "No grupo" : "Classificação"}</p>
+            <p className="font-display text-2xl text-teal-bright">
+              {isCup ? (cupState?.phase === "groups" ? (groupStandingPosition ? `${groupStandingPosition}º` : "—") : "—") : `${position}º`}
+            </p>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
             <p className="font-sans text-[10px] text-text-tertiary">Físico</p>
-            <p className={cn("font-display text-lg", getPhysicalColorClass(userTeam.physical))}>{userTeam.physical}%</p>
+            <p className={cn("font-display text-2xl", getPhysicalColorClass(userTeam.physical))}>{userTeam.physical}%</p>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
             <p className="font-sans text-[10px] text-text-tertiary">Overall</p>
-            <p className="font-display text-lg text-gold">{userTeam.overall}</p>
+            <p className="font-display text-2xl text-gold">{userTeam.overall}</p>
           </div>
         </div>
 
         <p className="mb-1.5 font-sans text-xs text-text-tertiary">Escalação titular</p>
         <div className="mb-4">
-          <PitchView players={userTeam.starters} boostedPositions={boostedPositions} boostDelta={boostDelta} />
+          <FormationPitch
+            formation={userTeam.tactics.formation}
+            players={userTeam.starters}
+            boostedPositions={boostedPositions}
+            boostDelta={boostDelta}
+          />
         </div>
 
         <div className="mb-1.5 flex items-center gap-1.5">

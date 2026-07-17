@@ -5,6 +5,7 @@ import { BOT_CLUB_NAMES } from "@/mocks/clubs";
 import { FORMATIONS, LEAGUE_CONFIG, PLAY_STYLES } from "@/constants/game";
 import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
 import { buildStartersForFormation, buildReserveSquad } from "@/services/squadBuilderService";
+import { createFillerNameGuard } from "@/mocks/syntheticPlayers";
 import { delay, generateId, randomBetween } from "@/lib/delay";
 
 function shuffle<T>(arr: T[]): T[] {
@@ -29,11 +30,16 @@ function randomTactics(): TeamTactics {
  * Usa primeiro os jogadores que sobraram do draft; quando esgota, gera jogadores fictícios.
  * Roda em background — sem tela de espera própria (acontece durante "Gerando Liga").
  */
-export async function generateBotSquads(remainingPool: Player[], humanTeamsCount: number): Promise<Team[]> {
+export async function generateBotSquads(
+  remainingPool: Player[],
+  humanTeamsCount: number,
+  usedNames: Set<string> = createFillerNameGuard(),
+  targetTotalTeams: number = LEAGUE_CONFIG.TOTAL_CLUBS,
+  includeReserves: boolean = true
+): Promise<Team[]> {
   await delay(200);
 
-  const botCount = Math.max(0, LEAGUE_CONFIG.TOTAL_CLUBS - humanTeamsCount);
-  const usedNames = new Set<string>();
+  const botCount = Math.max(0, targetTotalTeams - humanTeamsCount);
   if (botCount === 0) return [];
 
   // Embaralha o pool restante — cada bot pega o melhor disponível por posição
@@ -46,8 +52,13 @@ export async function generateBotSquads(remainingPool: Player[], humanTeamsCount
     const tactics = randomTactics();
 
     const { starters, remainingPool: poolAfterStarters } = buildStartersForFormation(pool, tactics.formation, clubName, usedNames);
-    const { reserves, remainingPool: poolAfterReserves } = buildReserveSquad(poolAfterStarters, clubName, usedNames);
-    pool = poolAfterReserves;
+    let reserves: Player[] = [];
+    pool = poolAfterStarters;
+    if (includeReserves) {
+      const result = buildReserveSquad(poolAfterStarters, clubName, usedNames);
+      reserves = result.reserves;
+      pool = result.remainingPool;
+    }
 
     const squad = [...starters, ...reserves];
 

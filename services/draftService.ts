@@ -1,12 +1,13 @@
 import { DraftState, DraftPick, DraftTurn } from "@/types/draft";
 import { Player } from "@/types/player";
 import { RoomParticipant, TeamTactics } from "@/types/team";
-import { PLAYERS_POOL } from "@/mocks/players";
+import { buildLeaguePlayerPool } from "@/services/playerRepository";
 import { DRAFT_CONFIG } from "@/constants/game";
 import { toDraftPlayerCard } from "@/services/compatibilityService";
 import { findBestSlot, getFormationSlots } from "@/services/formationService";
-import { generateFillerPlayers } from "@/mocks/syntheticPlayers";
+import { generateFillerPlayers, createFillerNameGuard } from "@/mocks/syntheticPlayers";
 import { buildReserveSquad } from "@/services/squadBuilderService";
+import { drawWeightedByCategory } from "@/services/cardDrawService";
 import { delay } from "@/lib/delay";
 
 function shuffle<T>(arr: T[]): T[] {
@@ -40,7 +41,17 @@ function buildTurnSequence(order: string[]): DraftTurn[] {
   return turns;
 }
 
-const usedFillerNames = new Set<string>();
+// Um único guard de nomes por sessão de Draft — resetado a cada initDraft(),
+// nunca criado do zero a cada chamada da rede de segurança abaixo. Isso é o
+// que garante que, mesmo disparando dezenas de vezes numa liga com muita
+// escassez de posição (ex: 10 jogadores), os fillers injetados no pool nunca
+// repetem nome entre si.
+let draftFillerNameGuard = createFillerNameGuard();
+
+/** Nomes fictícios já usados nesta sessão de Draft — a tela de Gerando Liga usa isso pra nunca repetir um nome já visto durante o Draft. */
+export function getDraftFillerNames(): Set<string> {
+  return draftFillerNameGuard;
+}
 
 /**
  * Rede de segurança do Bug 2: se o pool restante não tiver NENHUM jogador capaz
@@ -62,7 +73,7 @@ function ensurePoolHasEligiblePlayer(pool: Player[], formation: TeamTactics["for
         (p.secondaryPositions ?? []).some((sp) => slot.acceptedPositions.includes(sp))
     );
     if (!hasCoverage) {
-      const [filler] = generateFillerPlayers(1, "Free Agent", usedFillerNames, slot.acceptedPositions[0]);
+      const [filler] = generateFillerPlayers(1, "Free Agent", draftFillerNameGuard, slot.acceptedPositions[0]);
       result = [...result, { ...filler, overall: Math.max(filler.overall, 68) }];
     }
   }
@@ -84,8 +95,11 @@ function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"]
     else others.push(player);
   }
 
-  const shuffledEligible = shuffle(eligible);
-  const shuffledOthers = shuffle(others);
+  // Ordena por raridade de categoria (95% comum / 4% Auge / 1% Lendária) dentro de
+  // cada grupo — mantém a mecânica 70/30 de elegibilidade exatamente como estava,
+  // só a ORDEM de prioridade dentro de cada grupo passa a respeitar a raridade.
+  const shuffledEligible = drawWeightedByCategory(eligible, eligible.length);
+  const shuffledOthers = drawWeightedByCategory(others, others.length);
 
   const eligibleTarget = Math.round(count * 0.7);
   const othersTarget = count - eligibleTarget;
@@ -112,9 +126,10 @@ function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"]
 
 export async function initDraft(roomId: string, humanParticipants: RoomParticipant[]): Promise<DraftState> {
   await delay(600);
+  draftFillerNameGuard = createFillerNameGuard(); // reseta a cada nova liga — nunca herda nomes de um draft anterior
   const order = humanParticipants.map((p) => p.id);
   const turns = buildTurnSequence(order);
-  let pool = shuffle(PLAYERS_POOL);
+  let pool = shuffle(buildLeaguePlayerPool());
   const filledSlots: Record<string, Record<string, Player>> = {};
   const participantTactics: Record<string, TeamTactics> = {};
   humanParticipants.forEach((p) => {
@@ -291,11 +306,11 @@ export function getSquadForParticipant(state: DraftState, participantId: string)
 export function assignReservesToHumans(
   finalPool: Player[],
   humanParticipantIds: string[],
-  clubNames: Record<string, string>
+  clubNames: Record<string, string>,
+  usedNames: Set<string> = createFillerNameGuard()
 ): { reserves: Record<string, Player[]>; remainingPool: Player[] } {
   let pool = shuffle(finalPool);
   const reserves: Record<string, Player[]> = {};
-  const usedNames = new Set<string>();
 
   for (const participantId of humanParticipantIds) {
     const { reserves: teamReserves, remainingPool } = buildReserveSquad(pool, clubNames[participantId] ?? "Reservas", usedNames);
