@@ -247,8 +247,8 @@ export default function DraftPage() {
               </div>
             </div>
 
-            <div className={cn("my-[clamp(4px,0.7vh,8px)] min-h-0 flex-1 transition-all duration-300", !isSelfTurn && "opacity-60 grayscale")}>
-              <div className="grid h-full grid-cols-3 grid-rows-2 gap-[clamp(4px,0.8vmin,8px)]">
+            <div className={cn("mt-[clamp(4px,0.7vh,8px)] mb-[clamp(2px,0.35vh,4px)] min-h-0 flex-1 transition-all duration-300", !isSelfTurn && "opacity-60 grayscale")}>
+              <div className="grid h-full grid-cols-3 grid-rows-2 gap-[clamp(3px,0.7vmin,7px)]">
                 <AnimatePresence mode="popLayout">
                   {candidateCards.map((card) => {
                     const eligible = isEligible(card.id);
