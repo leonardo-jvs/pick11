@@ -406,7 +406,14 @@ export async function resetCompetition(roomId: string): Promise<void> {
   const { error: statusError } = await supabase.from("rooms").update({ status: "lobby" }).eq("id", roomId);
   if (statusError) throw new Error(statusError.message);
 
-  await supabase.from("room_participants").update({ is_ready: false }).eq("room_id", roomId);
+  // Zerar o "pronto" de TODOS os participantes num update só não funciona: a
+  // política de RLS de room_participants só deixa cada usuário alterar a
+  // própria linha (de propósito — nenhum cliente pode mexer no dado de
+  // outro). Um update em massa aqui silenciosamente só afetaria a linha do
+  // próprio host, deixando todo mundo mais com o "pronto" antigo — o Draft
+  // podia então começar sozinho sem ninguém ter confirmado de verdade pra
+  // nova competição. Por isso cada cliente reseta a própria prontidão ao
+  // detectar que a sala voltou pro Lobby (ver app/lobby/[roomId]/page.tsx).
   await supabase.from("competition_states").delete().eq("room_id", roomId);
   await supabase.from("draft_states").delete().eq("room_id", roomId);
 }

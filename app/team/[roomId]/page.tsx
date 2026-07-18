@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Users } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +11,10 @@ import { FormationPitch } from "@/components/features/league/FormationPitch";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { useRoomRealtime } from "@/hooks/useRoomRealtime";
+import { fetchRoom } from "@/services/roomService";
+import { fetchDraftState } from "@/services/draftSyncService";
+import { ensureAnonymousSession } from "@/lib/supabase/auth";
+import { toast } from "@/store/toastStore";
 import { getFormationPanel } from "@/services/formationService";
 import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
 import { RoomParticipant } from "@/types/team";
@@ -40,15 +44,57 @@ function MiniPitch({ participant, filledSlots }: { participant: RoomParticipant;
 
 export default function TeamPage() {
   const router = useRouter();
+  const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
+  const setRoom = useSessionStore((s) => s.setRoom);
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
+  const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const draftState = useSessionStore((s) => s.draftState);
+  const setDraftState = useSessionStore((s) => s.setDraftState);
   const [showOthers, setShowOthers] = useState(false);
+  const [reconnecting, setReconnecting] = useState(true);
 
   const self = room?.participants.find((p) => p.id === selfParticipantId);
   const hostId = room?.hostId;
   const isHost = !!self && self.id === hostId;
   const isSolo = !!room && room.participants.length <= 1;
+
+  // Reconexão: sem isso, um F5 nesta tela deixava a store vazia pra sempre —
+  // mesmo padrão já usado no Lobby, Draft, Pré-Partida e Simulação.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await ensureAnonymousSession();
+        let currentRoom = room;
+        if (!currentRoom || currentRoom.id !== params.roomId) {
+          const freshRoom = await fetchRoom(params.roomId);
+          if (cancelled) return;
+          if (!freshRoom) {
+            toast.urgent("Essa sala não existe mais.");
+            router.push(ROUTES.roomHub);
+            return;
+          }
+          currentRoom = freshRoom;
+          setRoom(freshRoom);
+          setSelfParticipantId(user.id);
+        }
+        if (!draftState) {
+          const snapshot = await fetchDraftState(currentRoom.id);
+          if (cancelled) return;
+          if (snapshot?.state.isComplete) setDraftState(snapshot.state);
+        }
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar.");
+      } finally {
+        if (!cancelled) setReconnecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.roomId]);
 
   // Mantém o status da sala sincronizado em tempo real — é a ÚNICA fonte de
   // verdade sobre "o administrador já gerou a competição". Nenhum cliente
@@ -62,6 +108,14 @@ export default function TeamPage() {
       router.push(ROUTES.generatingLeague(room.id));
     }
   }, [room, router]);
+
+  if (reconnecting) {
+    return (
+      <Screen center>
+        <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+      </Screen>
+    );
+  }
 
   if (!room || !draftState || !self) {
     return (

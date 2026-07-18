@@ -92,6 +92,22 @@ export default function LobbyPage() {
     setClubNameDraft(self?.clubName ?? "");
   }, [self?.clubName]);
 
+  // Depois de "Nova Liga"/"Nova Copa", a sala volta pro Lobby mas cada
+  // participante pode ainda estar marcado como "pronto" da competição
+  // anterior (só a própria linha de cada um pode ser alterada, por RLS — ver
+  // services/competitionSyncService.ts). Sem isso, o Draft podia começar de
+  // novo sozinho, com gente que nunca confirmou presença na nova competição.
+  // A checagem roda só UMA VEZ, no carregamento — nunca de novo depois disso,
+  // senão desmarcaria o usuário assim que ele clicasse em "Estou pronto" normalmente.
+  const initialReadinessCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!room || !self || initialReadinessCheckedRef.current) return;
+    initialReadinessCheckedRef.current = true;
+    if (room.status === "lobby" && self.isReady) {
+      updateOwnParticipant(room.id, self.id, { isReady: false }).catch(() => {});
+    }
+  }, [room, self]);
+
   // Início automático quando todos ficarem prontos — só o HOST escreve o
   // estado inicial do Draft no servidor (senão todo mundo tentaria criar o
   // mesmo draft ao mesmo tempo). Os demais participantes reagem à mudança de

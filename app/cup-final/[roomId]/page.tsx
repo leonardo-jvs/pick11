@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy, Skull, RotateCcw } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
@@ -10,21 +10,72 @@ import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { getPhaseLabel } from "@/services/cupService";
 import { resetCompetition } from "@/services/competitionSyncService";
+import { fetchRoom } from "@/services/roomService";
+import { ensureAnonymousSession } from "@/lib/supabase/auth";
+import { useRoomRealtime } from "@/hooks/useRoomRealtime";
 import { toast } from "@/store/toastStore";
 import { CupPhase } from "@/types/cup";
 
 export default function CupFinalPage() {
   const router = useRouter();
+  const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
+  const setRoom = useSessionStore((s) => s.setRoom);
   const cupState = useSessionStore((s) => s.cupState);
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
+  const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const userTeam = useSessionStore((s) => s.userTeam());
   const teams = useSessionStore((s) => s.teams);
   const reset = useSessionStore((s) => s.reset);
   const [resetting, setResetting] = useState(false);
+  const [reconnecting, setReconnecting] = useState(true);
 
   const isHost = !!room && room.hostId === selfParticipantId;
   const isSolo = !!room && room.maxPlayers === 1;
+
+  // Reconexão: sem isso, um F5 nesta tela deixava `selfParticipantId` vazio,
+  // e o próprio host deixava de ver o botão "Nova Copa" (isHost calculava
+  // errado). Também escuta o status da sala: se o host reiniciar a
+  // competição enquanto outro jogador ainda está aqui, ele é levado pro
+  // Lobby automaticamente junto.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await ensureAnonymousSession();
+        if (!room || room.id !== params.roomId) {
+          const freshRoom = await fetchRoom(params.roomId);
+          if (cancelled) return;
+          if (freshRoom) {
+            setRoom(freshRoom);
+            setSelfParticipantId(user.id);
+          }
+        }
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar.");
+      } finally {
+        if (!cancelled) setReconnecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.roomId]);
+
+  useRoomRealtime(room?.id ?? null);
+
+  useEffect(() => {
+    if (room?.status === "lobby") router.push(ROUTES.lobby(room.id));
+  }, [room, router]);
+
+  if (reconnecting) {
+    return (
+      <Screen center>
+        <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+      </Screen>
+    );
+  }
 
   if (!room || !userTeam || !cupState) {
     return (

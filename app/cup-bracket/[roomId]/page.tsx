@@ -1,10 +1,17 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Trophy } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { useSessionStore } from "@/store/sessionStore";
 import { getPhaseLabel } from "@/services/cupService";
+import { fetchCompetitionState } from "@/services/competitionSyncService";
+import { fetchRoom } from "@/services/roomService";
+import { ensureAnonymousSession } from "@/lib/supabase/auth";
+import { useCompetitionRealtime } from "@/hooks/useCompetitionRealtime";
+import { toast } from "@/store/toastStore";
+import { ROUTES } from "@/constants/routes";
 import { CupPhase } from "@/types/cup";
 import { cn } from "@/lib/utils";
 
@@ -12,10 +19,59 @@ const PHASE_ORDER: Exclude<CupPhase, "groups" | "finished">[] = ["quarterfinal",
 
 export default function CupBracketPage() {
   const router = useRouter();
+  const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
+  const setRoom = useSessionStore((s) => s.setRoom);
+  const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const teams = useSessionStore((s) => s.teams);
   const cupState = useSessionStore((s) => s.cupState);
   const userTeam = useSessionStore((s) => s.userTeam());
+  const [reconnecting, setReconnecting] = useState(true);
+
+  // Reconexão + tempo real: o chaveamento é frequentemente aberto no meio do
+  // torneio (outros confrontos daquela fase ainda podem estar sendo
+  // decididos) — sem isso, a tela ficava parada na foto do momento em que
+  // foi aberta, e um F5 deixava a store vazia pra sempre.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await ensureAnonymousSession();
+        let currentRoom = room;
+        if (!currentRoom || currentRoom.id !== params.roomId) {
+          const freshRoom = await fetchRoom(params.roomId);
+          if (cancelled) return;
+          if (!freshRoom) {
+            toast.urgent("Essa sala não existe mais.");
+            router.push(ROUTES.roomHub);
+            return;
+          }
+          currentRoom = freshRoom;
+          setRoom(freshRoom);
+          setSelfParticipantId(user.id);
+        }
+        await fetchCompetitionState(currentRoom.id);
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar.");
+      } finally {
+        if (!cancelled) setReconnecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.roomId]);
+
+  useCompetitionRealtime(room?.id ?? null);
+
+  if (reconnecting) {
+    return (
+      <Screen center>
+        <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+      </Screen>
+    );
+  }
 
   if (!room || !cupState) {
     return (
