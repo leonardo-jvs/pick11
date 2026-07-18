@@ -167,12 +167,20 @@ export default function SimulationPage() {
     return () => clearTimeout(t);
   }, [beats, visibleCount, phase]);
 
-  // Depois das estatísticas, navega sozinho pra próxima etapa
+  // Depois das estatísticas, navega sozinho pra próxima etapa.
+  // Mesma correção aplicada no Lobby: `userMatch`/`matches` podem trocar de
+  // referência por eventos do Realtime não relacionados enquanto essa tela
+  // está aberta; se a pausa fosse um setTimeout do próprio efeito, o cleanup
+  // cancelaria a navegação agendada sempre que isso acontecesse. Por isso a
+  // decisão de navegar é travada (`navigatedRef.current = true`) ANTES de
+  // agendar a pausa, e a pausa fica dentro de uma função assíncrona sem
+  // cleanup que a cancele.
   useEffect(() => {
     if (phase !== "stats" || !room || !userMatch || navigatedRef.current) return;
-    const t = setTimeout(() => {
-      if (navigatedRef.current) return;
-      navigatedRef.current = true;
+    navigatedRef.current = true;
+
+    (async () => {
+      await new Promise((r) => setTimeout(r, LIVE_MATCH_CONFIG.STATS_SECONDS * 1000));
       setShowStandings(false);
       if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
@@ -185,8 +193,7 @@ export default function SimulationPage() {
       } else {
         router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
       }
-    }, LIVE_MATCH_CONFIG.STATS_SECONDS * 1000);
-    return () => clearTimeout(t);
+    })();
   }, [phase, room, isCup, cupOutcome, userMatch, router]);
 
   if (reconnecting) {

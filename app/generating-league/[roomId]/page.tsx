@@ -74,10 +74,15 @@ export default function GeneratingLeaguePage() {
         if (cancelledRef.current) return;
       }
       setStepIndex(STEPS.length - 1);
+      await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
+      if (cancelledRef.current) return;
 
       try {
+        // O deadline da primeira rodada é gravado AQUI DENTRO — feito o mais
+        // perto possível da navegação, sem nenhuma pausa cosmética depois,
+        // pra não desperdiçar tempo do cronômetro compartilhado com latência
+        // evitável.
         await startCompetitionOnServer(room, draftState);
-        await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
         if (cancelledRef.current) return;
         router.push(ROUTES.preMatch(room.id, 1));
       } catch (e) {

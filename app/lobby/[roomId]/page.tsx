@@ -96,6 +96,16 @@ export default function LobbyPage() {
   // estado inicial do Draft no servidor (senão todo mundo tentaria criar o
   // mesmo draft ao mesmo tempo). Os demais participantes reagem à mudança de
   // room.status, que chega via Realtime pra todo mundo igual.
+  //
+  // IMPORTANTE: a pausa cosmética fica DENTRO da função assíncrona (await),
+  // nunca como um setTimeout agendado pelo próprio efeito. `room.participants`
+  // é uma referência NOVA a cada evento do Realtime (mesmo que o conteúdo não
+  // mude de verdade), então esse efeito re-executa com frequência — se a
+  // pausa fosse um setTimeout do efeito, o cleanup (`clearTimeout`) cancelaria
+  // silenciosamente o início do draft sempre que outro evento chegasse antes
+  // dos 1.6s acabarem, e o guard `hasStartedRef` impediria qualquer nova
+  // tentativa. Era exatamente isso que fazia o clique do host "não fazer
+  // nada" — a corrida cancelava o início antes dele completar.
   useEffect(() => {
     if (!room || !self || hasStartedRef.current) return;
 
@@ -111,11 +121,15 @@ export default function LobbyPage() {
     const enoughPlayers = room.participants.length >= room.minPlayers;
     if (!everyoneReady || !enoughPlayers) return;
 
+    // Trava IMEDIATAMENTE — a partir daqui, nada mais pode cancelar essa
+    // tentativa, mesmo que o efeito re-execute de novo por causa de outro
+    // evento do Realtime chegando no meio do caminho.
     hasStartedRef.current = true;
     setIsStarting(true);
     toast.success("Todos prontos! Iniciando o draft...");
 
-    const t = setTimeout(async () => {
+    (async () => {
+      await new Promise((r) => setTimeout(r, 1600));
       try {
         await startDraftOnServer(room);
         router.push(ROUTES.draft(room.id));
@@ -124,9 +138,8 @@ export default function LobbyPage() {
         hasStartedRef.current = false;
         setIsStarting(false);
       }
-    }, 1600);
-
-    return () => clearTimeout(t);
+    })();
+    // Sem cleanup que cancele — de propósito.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.participants, room?.status]);
 

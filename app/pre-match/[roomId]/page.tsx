@@ -17,6 +17,7 @@ import {
   simulateRoundOnServer,
   getHumanTeamIdsForRound,
   fetchCompetitionState,
+  refreshRoundDeadlineIfStale,
   CompetitionSnapshot,
 } from "@/services/competitionSyncService";
 import { fetchRoom } from "@/services/roomService";
@@ -127,16 +128,18 @@ export default function PreMatchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matches, userTeam?.id]);
 
-  // O tempo restante SEMPRE vem do deadline gravado no servidor — nunca de um
-  // contador local independente (item 2). Recalculado só quando o deadline ou
-  // a rodada/fase muda, pra não reiniciar o Timer a cada re-render. Desktop e
-  // mobile leem exatamente o mesmo `competitionDeadline`, então mostram
-  // exatamente o mesmo número.
+  // O tempo restante do Multiplayer SEMPRE vem do deadline gravado no
+  // servidor — nunca de um contador local independente (item 2/4 da sprint
+  // anterior). No Singleplayer não existe ninguém pra sincronizar, então usar
+  // o deadline buscado via rede só introduzia atraso/latência que podia
+  // comer os 10 segundos inteiros (o cronômetro "nascendo" já perto de zero).
+  // Por isso o Singleplayer usa sempre a contagem cheia, local e imediata.
   const timerSeconds = useMemo(() => {
+    if (isSolo) return PRE_MATCH_CONFIG.TIMER_SECONDS;
     if (!competitionDeadline) return PRE_MATCH_CONFIG.TIMER_SECONDS;
     return Math.max(0, Math.round((new Date(competitionDeadline).getTime() - Date.now()) / 1000));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRound, cupState?.phase, cupState?.currentGroupRound, competitionDeadline]);
+  }, [isSolo, currentRound, cupState?.phase, cupState?.currentGroupRound, competitionDeadline]);
 
   // Reseta o bônus travado sempre que uma nova rodada/fase começa
   useEffect(() => {
@@ -197,6 +200,34 @@ export default function PreMatchPage() {
     if (everyoneReady) attemptSimulateRound();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundReadiness]);
+
+  // Se o prazo da rodada já nasceu vencido (ex: chegamos aqui depois de
+  // assistir ~10s de narração/estatísticas da rodada anterior, tempo
+  // suficiente pra "comer" o próprio cronômetro de 10s da Pré-Partida),
+  // renova. Só no Multiplayer — Singleplayer usa cronômetro local, não
+  // depende disso. Uma tentativa por rodada; a trava otimista evita conflito
+  // se os dois jogadores de um confronto chegarem e tentarem ao mesmo tempo.
+  const deadlineCheckedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isSolo || !room || teams.length === 0) return;
+    const roundKey = `${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`;
+    if (deadlineCheckedForRef.current === roundKey) return;
+    deadlineCheckedForRef.current = roundKey;
+
+    const snapshot: CompetitionSnapshot = {
+      teams,
+      schedule: schedule.length > 0 ? schedule : null,
+      cupState,
+      matches,
+      currentRound,
+      phase: "pre_match",
+      roundReadiness,
+      roundDeadline: competitionDeadline,
+      version: competitionVersion,
+    };
+    refreshRoundDeadlineIfStale(room.id, snapshot);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSolo, room?.id, teams.length, currentRound, cupState?.phase, cupState?.currentGroupRound]);
 
   if (reconnecting) {
     return (

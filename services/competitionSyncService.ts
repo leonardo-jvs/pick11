@@ -127,7 +127,7 @@ export async function fetchCompetitionState(roomId: string): Promise<Competition
 }
 
 /** Escrita protegida por concorrência otimista — mesmo padrão da Fase 2 (draft_states.turn_version). */
-async function submitCompetitionState(
+export async function submitCompetitionState(
   roomId: string,
   expectedVersion: number,
   patch: Partial<{
@@ -150,6 +150,31 @@ async function submitCompetitionState(
     .select("version");
   if (error) throw new Error(error.message);
   return (data?.length ?? 0) > 0;
+}
+
+/**
+ * O deadline de uma rodada é gravado no exato momento em que a rodada
+ * ANTERIOR termina de simular — mas os jogadores só voltam pra Pré-Partida
+ * depois de assistir à narração + estatísticas daquela partida (na prática,
+ * quase os mesmos 10s do próprio cronômetro da Pré-Partida!). Sem essa
+ * função, o prazo já nasceria vencido ou quase vencido pra quem chegasse
+ * depois desse tempo — exatamente o "cronômetro começando em 0" relatado.
+ *
+ * Qualquer cliente que perceba o prazo vencido/quase vencido ao entrar na
+ * tela pode renová-lo — protegido pela mesma trava otimista, então mesmo que
+ * os dois jogadores de um confronto tentem ao mesmo tempo, só um vence e o
+ * outro aceita o resultado via Realtime, sem duplicar nem conflitar.
+ */
+export async function refreshRoundDeadlineIfStale(roomId: string, snapshot: CompetitionSnapshot): Promise<void> {
+  const deadlineMs = snapshot.roundDeadline ? new Date(snapshot.roundDeadline).getTime() : 0;
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs > 2000) return; // ainda sobra tempo de verdade, nada a fazer
+  const freshDeadline = new Date(Date.now() + PRE_MATCH_CONFIG.TIMER_SECONDS * 1000).toISOString();
+  try {
+    await submitCompetitionState(roomId, snapshot.version, { round_deadline: freshDeadline });
+  } catch {
+    // Outro cliente já deve ter renovado, ou vai renovar — o Realtime traz o resultado.
+  }
 }
 
 /** Quais times humanos têm confronto na rodada (Liga) ou fase atual (Copa) — usado pro indicador de prontidão e pra decidir quando simular. */
