@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/Modal";
 import { FormationPitch } from "@/components/features/league/FormationPitch";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
+import { useRoomRealtime } from "@/hooks/useRoomRealtime";
 import { getFormationPanel } from "@/services/formationService";
 import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
 import { RoomParticipant } from "@/types/team";
@@ -43,23 +44,24 @@ export default function TeamPage() {
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const draftState = useSessionStore((s) => s.draftState);
   const [showOthers, setShowOthers] = useState(false);
-  const [generating, setGenerating] = useState(false);
 
   const self = room?.participants.find((p) => p.id === selfParticipantId);
   const hostId = room?.hostId;
   const isHost = !!self && self.id === hostId;
   const isSolo = !!room && room.participants.length <= 1;
 
-  // Simula os outros participantes vendo o resumo e aguardando o administrador —
-  // se o usuário não é o host, a liga "começa" pouco depois de o host iniciar.
+  // Mantém o status da sala sincronizado em tempo real — é a ÚNICA fonte de
+  // verdade sobre "o administrador já gerou a competição". Nenhum cliente
+  // navega sozinho por conta própria: todos esperam essa mudança real vinda
+  // do banco antes de avançar juntos.
+  useRoomRealtime(room?.id ?? null);
+
   useEffect(() => {
-    if (!room || isSolo || isHost) return;
-    const timeout = setTimeout(() => {
-      setGenerating(true);
+    if (!room) return;
+    if (room.status === "in_league" || room.status === "in_cup") {
       router.push(ROUTES.generatingLeague(room.id));
-    }, 3200);
-    return () => clearTimeout(timeout);
-  }, [room, isSolo, isHost, router]);
+    }
+  }, [room, router]);
 
   if (!room || !draftState || !self) {
     return (
@@ -113,7 +115,7 @@ export default function TeamPage() {
       )}
 
       {isSolo || isHost ? (
-        <Button fullWidth size="lg" isLoading={generating} onClick={() => router.push(ROUTES.generatingLeague(room.id))}>
+        <Button fullWidth size="lg" onClick={() => router.push(ROUTES.generatingLeague(room.id))}>
           {room.gameMode === "cup" ? "Gerar Copa" : "Gerar Liga"}
         </Button>
       ) : (

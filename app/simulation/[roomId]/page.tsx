@@ -129,8 +129,8 @@ export default function SimulationPage() {
   useCompetitionRealtime(room?.id ?? null);
 
   // A minha partida é sempre a mais recente do histórico envolvendo meu time
-  // — o resultado já foi calculado e gravado pelo servidor (RoundAdvancer, na
-  // Pré-Partida), aqui só lemos e narramos.
+  // — o resultado já foi calculado e gravado pelo servidor (Pré-Partida, ao
+  // cronômetro compartilhado chegar a zero), aqui só lemos e narramos.
   const userMatch = useMemo(() => {
     if (!userTeam) return null;
     const mine = matches.filter((m) => m.homeTeamId === userTeam.id || m.awayTeamId === userTeam.id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Zap, Shield, BedDouble, Check, Lock, GitBranch } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
@@ -12,7 +12,13 @@ import { SELECTABLE_BOOSTS, BOOST_USES, BOOST_LABELS, BOOST_POSITION_TARGETS, BO
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings } from "@/services/leagueService";
 import { getCurrentFixtureForTeam, getPhaseLabel, computeGroupStandings } from "@/services/cupService";
-import { submitReadiness, simulateRoundOnServer, getHumanTeamIdsForRound, fetchCompetitionState, CompetitionSnapshot } from "@/services/competitionSyncService";
+import {
+  submitReadiness,
+  simulateRoundOnServer,
+  getHumanTeamIdsForRound,
+  fetchCompetitionState,
+  CompetitionSnapshot,
+} from "@/services/competitionSyncService";
 import { fetchRoom } from "@/services/roomService";
 import { ensureAnonymousSession } from "@/lib/supabase/auth";
 import { useCompetitionRealtime } from "@/hooks/useCompetitionRealtime";
@@ -57,6 +63,9 @@ export default function PreMatchPage() {
   const userTeam = useSessionStore((s) => s.userTeam());
 
   const isCup = room?.gameMode === "cup";
+  // Singleplayer é sempre sala de 1 jogador — mantém o fluxo antigo (botão
+  // "Iniciar Partida"). Multiplayer nunca mostra esse botão (item 6).
+  const isSolo = !!room && room.maxPlayers === 1;
 
   const [lockedBoost, setLockedBoost] = useState<Boost | null>(null);
   const [starting, setStarting] = useState(false);
@@ -82,8 +91,6 @@ export default function PreMatchPage() {
           setRoom(freshRoom);
           setSelfParticipantId(user.id);
         }
-        // O useCompetitionRealtime abaixo já busca e mantém o resto sincronizado.
-        await fetchCompetitionState(currentRoom.id);
       } catch (e) {
         toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar.");
       } finally {
@@ -96,14 +103,15 @@ export default function PreMatchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.roomId]);
 
+  // Única fonte de sincronização de dados desta tela — substitui qualquer
+  // busca solta. Escuta em tempo real e mantém teams/schedule/cupState/
+  // matches/currentRound/roundReadiness/deadline sempre espelhando o servidor.
   useCompetitionRealtime(room?.id ?? null);
 
   // Detecta quando a MINHA partida da rodada atual foi simulada (mesmo que eu
-  // não tenha clicado em "pronto" — o prazo pode ter vencido) comparando
-  // quantas partidas do meu time existiam quando entrei nesta tela contra
-  // quantas existem agora. Robusto contra qualquer corrida de tempo, porque
-  // não depende de comparar números de rodada — só de "minha próxima partida
-  // apareceu no histórico".
+  // não tenha feito nada — o prazo compartilhado pode ter vencido em outro
+  // cliente) comparando quantas partidas do meu time existiam quando entrei
+  // nesta tela contra quantas existem agora.
   const myMatchCountRef = useRef<number | null>(null);
   useEffect(() => {
     if (!userTeam) return;
@@ -113,14 +121,17 @@ export default function PreMatchPage() {
       return;
     }
     if (myMatches.length > myMatchCountRef.current && room) {
-      // Pega a rodada da partida que acabou de ser disputada — não a
-      // currentRound da store, que a esta altura já pode ter avançado.
       const justPlayedRound = myMatches[myMatches.length - 1].round;
       router.push(ROUTES.simulation(room.id, justPlayedRound));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matches, userTeam?.id]);
 
+  // O tempo restante SEMPRE vem do deadline gravado no servidor — nunca de um
+  // contador local independente (item 2). Recalculado só quando o deadline ou
+  // a rodada/fase muda, pra não reiniciar o Timer a cada re-render. Desktop e
+  // mobile leem exatamente o mesmo `competitionDeadline`, então mostram
+  // exatamente o mesmo número.
   const timerSeconds = useMemo(() => {
     if (!competitionDeadline) return PRE_MATCH_CONFIG.TIMER_SECONDS;
     return Math.max(0, Math.round((new Date(competitionDeadline).getTime() - Date.now()) / 1000));
@@ -132,6 +143,60 @@ export default function PreMatchPage() {
     setLockedBoost(null);
     setStarting(false);
   }, [currentRound, cupState?.phase, cupState?.currentGroupRound]);
+
+  const iAmReady = !!(userTeam && roundReadiness[userTeam.id]?.ready);
+
+  /**
+   * Tenta calcular e gravar a rodada inteira no servidor. Qualquer
+   * participante pode chamar isso — a trava de concorrência otimista garante
+   * que só a primeira tentativa realmente aplica algo; as demais são
+   * descartadas silenciosamente. Chamado em dois momentos: (a) assim que
+   * todos os humanos da rodada confirmarem, como atalho; (b) sempre que o
+   * cronômetro COMPARTILHADO chega a zero, como garantia — igual ao Draft.
+   */
+  const attemptSimulateRound = useCallback(async () => {
+    if (!room || teams.length === 0) return;
+    const snapshot: CompetitionSnapshot = {
+      teams,
+      schedule: schedule.length > 0 ? schedule : null,
+      cupState,
+      matches,
+      currentRound,
+      phase: "pre_match",
+      roundReadiness,
+      roundDeadline: competitionDeadline,
+      version: competitionVersion,
+    };
+    try {
+      await simulateRoundOnServer(room.id, snapshot);
+    } catch {
+      // Outro cliente já deve estar fazendo isso, ou o Realtime vai trazer o
+      // resultado logo em seguida — nada a fazer aqui.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.id, teams, schedule, cupState, matches, currentRound, roundReadiness, competitionDeadline, competitionVersion]);
+
+  // Atalho: dispara mais cedo se todos os humanos da rodada já confirmaram —
+  // só é relevante pra quem ainda usa o fluxo com botão (Singleplayer). No
+  // Multiplayer o disparo garantido é sempre o cronômetro (onComplete do Timer).
+  useEffect(() => {
+    if (!room || teams.length === 0) return;
+    const snapshot: CompetitionSnapshot = {
+      teams,
+      schedule: schedule.length > 0 ? schedule : null,
+      cupState,
+      matches,
+      currentRound,
+      phase: "pre_match",
+      roundReadiness,
+      roundDeadline: competitionDeadline,
+      version: competitionVersion,
+    };
+    const humanIds = getHumanTeamIdsForRound(snapshot);
+    const everyoneReady = humanIds.length > 0 && humanIds.every((id) => roundReadiness[id]?.ready);
+    if (everyoneReady) attemptSimulateRound();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundReadiness]);
 
   if (reconnecting) {
     return (
@@ -185,9 +250,7 @@ export default function PreMatchPage() {
     : (BOOST_POSITION_TARGETS[activeBoost] as Position[] | undefined);
   const boostDelta = isPouparElenco ? -BOOST_OVERALL_BONUS : BOOST_OVERALL_BONUS;
 
-  const iAmReady = !!roundReadiness[userTeam.id]?.ready;
   const opponentReady = !!(opponent && roundReadiness[opponent.id]?.ready);
-  const readyCount = (iAmReady ? 1 : 0) + (opponentReady ? 1 : 0);
 
   function isBoostDisabled(boost: Boost) {
     if (lockedBoost !== null || iAmReady) return true;
@@ -203,17 +266,8 @@ export default function PreMatchPage() {
     return `${Math.max(0, limit - used)}/${limit} usos`;
   }
 
-  function handleSelectBoost(boost: Boost) {
-    if (lockedBoost !== null || iAmReady) return;
-    setLockedBoost(boost);
-  }
-
-  async function handleStart() {
-    if (starting || iAmReady || !room || !userTeam) return;
-    setStarting(true);
-    const boost = lockedBoost ?? "Nenhum";
-    if (boost !== "Nenhum") recordBoostUse(boost);
-
+  async function submitMyReadiness(boost: Boost) {
+    if (!room || !userTeam) return;
     let snapshot: CompetitionSnapshot = {
       teams,
       schedule: schedule.length > 0 ? schedule : null,
@@ -225,23 +279,38 @@ export default function PreMatchPage() {
       roundDeadline: competitionDeadline,
       version: competitionVersion,
     };
-
     // Se outro jogador confirmou no mesmo instante, a escrita otimista perde
-    // a corrida — busca o estado mais fresco e tenta de novo, em vez de
-    // deixar o clique do usuário silenciosamente não valer nada.
+    // a corrida — busca o estado mais fresco e tenta de novo.
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const accepted = await submitReadiness(room.id, snapshot, userTeam.id, boost);
-        if (accepted) return; // o Realtime atualiza iAmReady sozinho a partir daqui
+        if (accepted) return;
         const fresh = await fetchCompetitionState(room.id);
-        if (!fresh) break;
-        if (fresh.roundReadiness[userTeam.id]?.ready) return; // já confirmado (ex: outra aba)
+        if (!fresh) return;
+        if (fresh.roundReadiness[userTeam.id]?.ready) return;
         snapshot = fresh;
       } catch (e) {
         toast.urgent(e instanceof Error ? e.message : "Não foi possível confirmar. Tente de novo.");
-        break;
+        return;
       }
     }
+  }
+
+  function handleSelectBoost(boost: Boost) {
+    if (lockedBoost !== null || iAmReady) return;
+    setLockedBoost(boost);
+    // Multiplayer: escolher o bônus já confirma presença na hora — não existe
+    // mais um botão separado de "Iniciar Partida" (item 6). Singleplayer
+    // continua exigindo o clique no botão, como sempre funcionou.
+    if (!isSolo) submitMyReadiness(boost);
+  }
+
+  async function handleStartSolo() {
+    if (starting || iAmReady || !room || !userTeam) return;
+    setStarting(true);
+    const boost = lockedBoost ?? "Nenhum";
+    if (boost !== "Nenhum") recordBoostUse(boost);
+    await submitMyReadiness(boost);
     setStarting(false);
   }
 
@@ -254,7 +323,8 @@ export default function PreMatchPage() {
               {isCup ? cupFixtureInfo : `Rodada ${currentRound} de ${LEAGUE_CONFIG.TOTAL_ROUNDS}`}
             </p>
             <h1 className="font-display text-2xl tracking-wide text-text-primary">
-              {userTeam.clubName} <span className="text-text-tertiary">{isHome ? "🏠" : "✈️"}</span> {opponent?.clubName ?? "—"}
+              {userTeam.clubName} <span className="text-text-tertiary">{isHome ? "🏠" : "✈️"}</span>{" "}
+              {opponent?.clubName ?? <span className="text-text-tertiary">Aguardando confronto...</span>}
             </h1>
             {isCup && cupState && cupState.phase !== "groups" && (
               <button
@@ -265,7 +335,12 @@ export default function PreMatchPage() {
               </button>
             )}
           </div>
-          <Timer seconds={timerSeconds} resetKey={`${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`} onComplete={() => {}} size={64} />
+          <Timer
+            seconds={timerSeconds}
+            resetKey={`${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`}
+            onComplete={attemptSimulateRound}
+            size={64}
+          />
         </div>
 
         <div className="mb-4 grid grid-cols-4 gap-2">
@@ -337,66 +412,24 @@ export default function PreMatchPage() {
           })}
         </div>
 
-        <Button fullWidth size="lg" isLoading={starting && !iAmReady} disabled={iAmReady} onClick={handleStart}>
-          {iAmReady ? "Aguardando..." : opponent?.isHuman ? `Iniciar Partida (${readyCount}/2)` : "Iniciar Partida"}
-        </Button>
-
-        <RoundAdvancer roomId={room.id} />
+        {isSolo ? (
+          <Button fullWidth size="lg" isLoading={starting && !iAmReady} disabled={iAmReady} onClick={handleStartSolo}>
+            {iAmReady ? "Aguardando..." : "Iniciar Partida"}
+          </Button>
+        ) : (
+          <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
+            <p className="font-sans text-xs text-text-secondary">
+              {iAmReady ? "Confirmado — " : "Escolha um bônus ou aguarde — "}
+              a partida de todos os confrontos começa junto quando o cronômetro chegar a zero.
+            </p>
+            {opponent?.isHuman && (
+              <p className="mt-1 font-mono text-[11px] text-teal-bright">
+                {opponentReady ? "Adversário já confirmou" : "Aguardando confirmação do adversário"}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </Screen>
   );
-}
-
-/**
- * Componente invisível: qualquer participante conectado observa a prontidão
- * da rodada e tenta disparar a simulação quando todo mundo confirmou (ou o
- * prazo vence) — não só o host, pra rodada nunca travar se o host cair da
- * conexão no meio. A trava de concorrência otimista garante que, mesmo que
- * vários clientes tentem ao mesmo tempo, a rodada só é simulada uma única vez.
- */
-function RoundAdvancer({ roomId }: { roomId: string }) {
-  const teams = useSessionStore((s) => s.teams);
-  const schedule = useSessionStore((s) => s.schedule);
-  const cupState = useSessionStore((s) => s.cupState);
-  const matches = useSessionStore((s) => s.matches);
-  const currentRound = useSessionStore((s) => s.currentRound);
-  const roundReadiness = useSessionStore((s) => s.roundReadiness);
-  const competitionVersion = useSessionStore((s) => s.competitionVersion);
-  const competitionDeadline = useSessionStore((s) => s.competitionDeadline);
-  const triggeredRef = useRef(false);
-
-  useEffect(() => {
-    if (teams.length === 0) return;
-
-    const snapshot = {
-      teams,
-      schedule: schedule.length > 0 ? schedule : null,
-      cupState,
-      matches,
-      currentRound,
-      phase: "pre_match" as const,
-      roundReadiness,
-      roundDeadline: competitionDeadline,
-      version: competitionVersion,
-    };
-    const humanIds = getHumanTeamIdsForRound(snapshot);
-    const everyoneReady = humanIds.length > 0 && humanIds.every((id) => roundReadiness[id]?.ready);
-    const deadlinePassed = competitionDeadline ? new Date(competitionDeadline).getTime() <= Date.now() : false;
-
-    if (!everyoneReady && !deadlinePassed) return;
-    if (triggeredRef.current) return;
-    triggeredRef.current = true;
-
-    simulateRoundOnServer(roomId, snapshot)
-      .catch(() => {
-        // Falha pontual — outro cliente (ou o próprio host, num novo ciclo do
-        // efeito) tenta de novo; a trava otimista garante que nunca duplica.
-      })
-      .finally(() => {
-        triggeredRef.current = false;
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teams, schedule, cupState, matches, currentRound, roundReadiness, competitionVersion, competitionDeadline]);
-
-  return null;
 }
