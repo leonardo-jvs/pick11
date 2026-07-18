@@ -42,7 +42,7 @@ export const PLAY_STYLES = {
   defense: ["Pressão alta", "Bloco médio", "Linha baixa"] as const,
 };
 
-export const BOOSTS = ["Nenhum", "Bicho", "Jogo importante", "Recuperação rápida", "Poupar elenco"] as const;
+export const BOOSTS = ["Nenhum", "Bicho", "Jogo importante", "Poupar elenco"] as const;
 
 /** Opções realmente selecionáveis na Pré-Partida — "Nenhum" não é mais um botão, é o padrão quando o tempo esgota sem escolha. */
 export const SELECTABLE_BOOSTS = BOOSTS.filter((b) => b !== "Nenhum");
@@ -51,8 +51,19 @@ export const BOOST_USES: Record<(typeof BOOSTS)[number], number | null> = {
   Nenhum: null,
   Bicho: 2,
   "Jogo importante": 2,
-  "Recuperação rápida": 2,
   "Poupar elenco": null, // sem limite de usos, mas com penalidade de desempenho
+};
+
+/**
+ * Nome exibido ao usuário para cada bônus — separado do valor interno (que
+ * continua "Poupar elenco" em todo o código/lógica) pra poder trocar só o
+ * texto sem tocar em nenhuma regra, comparação ou chave de uso.
+ */
+export const BOOST_LABELS: Record<(typeof BOOSTS)[number], string> = {
+  Nenhum: "Nenhum",
+  Bicho: "Bicho",
+  "Jogo importante": "Jogo importante",
+  "Poupar elenco": "Tirar o Pé",
 };
 
 /**
@@ -67,7 +78,6 @@ export const BOOST_POSITION_TARGETS: Record<string, string[]> = {
 };
 
 export const BOOST_OVERALL_BONUS = 3;
-export const RECOVERY_PHYSICAL_BONUS = 0.25; // ~25% do físico
 
 export const DEFAULT_TACTICS = {
   formation: "4-3-3",

@@ -48,7 +48,7 @@ export async function generateBotSquads(
   const bots: Team[] = [];
 
   for (let i = 0; i < botCount; i++) {
-    const clubName = BOT_CLUB_NAMES[i % BOT_CLUB_NAMES.length];
+    const clubName = `BOT ${BOT_CLUB_NAMES[i % BOT_CLUB_NAMES.length]}`;
     const tactics = randomTactics();
 
     const { starters, remainingPool: poolAfterStarters } = buildStartersForFormation(pool, tactics.formation, clubName, usedNames);
@@ -122,11 +122,42 @@ function pickWeighted<T>(items: T[]): T {
   return items[randomBetween(0, items.length - 1)];
 }
 
-function simulateGoalsForTeam(overall: number, opponentOverall: number): number {
+/**
+ * Amostra de uma distribuição de Poisson (algoritmo de Knuth) — é o modelo
+ * estatístico padrão pra número de gols em uma partida de futebol real,
+ * porque gera naturalmente a proporção certa de 0x0, 1x0, 1x1, 2x1 etc. sem
+ * precisar arredondar médias artificialmente.
+ */
+function poissonSample(lambda: number): number {
+  const L = Math.exp(-lambda);
+  let k = 0;
+  let p = 1;
+  do {
+    k++;
+    p *= Math.random();
+  } while (p > L);
+  return k - 1;
+}
+
+/** Média de gols de um time — ~1.35 é a média real de gols por time no Brasileirão. */
+const BASE_GOALS_PER_TEAM = 1.35;
+/**
+ * Quanto o Overall pesa no resultado. Calibrado pra bater com o que o produto
+ * pede: diferença de 1 ponto (90x91) = praticamente equilibrado; diferença de
+ * 4 (88x92) = favoritismo perceptível; diferença de 10 (84x94) = grande
+ * favoritismo, mas a zebra continua sempre possível (nunca 0% ou 100%).
+ */
+const STRENGTH_SENSITIVITY = 42;
+const MAX_GOAL_EXPECTANCY = 3.4; // teto pra evitar goleadas irreais mesmo em desequilíbrios extremos
+
+function goalExpectancy(overall: number, opponentOverall: number): number {
   const diff = overall - opponentOverall;
-  const base = 1 + diff / 18; // times mais fortes tendem a marcar mais
-  const chance = Math.max(0.2, Math.min(3.2, base + (Math.random() - 0.5) * 2));
-  return Math.max(0, Math.round(chance));
+  const lambda = BASE_GOALS_PER_TEAM * Math.exp(diff / STRENGTH_SENSITIVITY);
+  return Math.max(0.15, Math.min(MAX_GOAL_EXPECTANCY, lambda));
+}
+
+function simulateGoalsForTeam(overall: number, opponentOverall: number): number {
+  return poissonSample(goalExpectancy(overall, opponentOverall));
 }
 
 function buildEvents(homeTeam: Team, awayTeam: Team, homeGoals: number, awayGoals: number): MatchEvent[] {
@@ -173,10 +204,28 @@ function buildEvents(homeTeam: Team, awayTeam: Team, homeGoals: number, awayGoal
   return events.sort((a, b) => a.minute - b.minute);
 }
 
-function buildStatLine(homeGoals: number, awayGoals: number): MatchStatLine {
-  const possession = randomBetween(38, 62);
-  const shotsHome = randomBetween(homeGoals + 2, homeGoals + 14);
-  const shotsAway = randomBetween(awayGoals + 2, awayGoals + 14);
+/**
+ * Posse e finalizações agora refletem a força relativa dos times e o estilo
+ * de ataque escolhido — não só o placar. Um time "Posse" ganha mais posse de
+ * bola; um time mais forte cria mais finalizações, mesmo que o placar não
+ * reflita isso naquele dia (futebol de verdade é assim).
+ */
+function buildStatLine(homeTeam: Team, awayTeam: Team, homeGoals: number, awayGoals: number): MatchStatLine {
+  const overallDiff = homeTeam.overall - awayTeam.overall;
+
+  let possession = 50 + overallDiff * 0.85;
+  if (homeTeam.tactics.attackStyle === "Posse") possession += 5;
+  if (awayTeam.tactics.attackStyle === "Posse") possession -= 5;
+  if (homeTeam.tactics.attackStyle === "Contra-ataque") possession -= 3;
+  if (awayTeam.tactics.attackStyle === "Contra-ataque") possession += 3;
+  possession = Math.round(Math.max(32, Math.min(68, possession + (Math.random() - 0.5) * 10)));
+
+  // Dominância: quem é mais forte cria mais chances, sem depender só do placar do dia
+  const homeDominance = Math.max(0.55, Math.min(1.75, 1 + overallDiff / 30));
+  const awayDominance = Math.max(0.55, Math.min(1.75, 1 - overallDiff / 30));
+  const shotsHome = Math.max(homeGoals + 1, Math.round(randomBetween(6, 11) * homeDominance));
+  const shotsAway = Math.max(awayGoals + 1, Math.round(randomBetween(6, 11) * awayDominance));
+
   return {
     possession,
     shots: [shotsHome, shotsAway],
@@ -190,7 +239,7 @@ export function simulateMatch(round: number, homeTeam: Team, awayTeam: Team, isU
   const homeGoals = simulateGoalsForTeam(homeTeam.overall, awayTeam.overall);
   const awayGoals = simulateGoalsForTeam(awayTeam.overall, homeTeam.overall);
   const events = buildEvents(homeTeam, awayTeam, homeGoals, awayGoals);
-  const stats = buildStatLine(homeGoals, awayGoals);
+  const stats = buildStatLine(homeTeam, awayTeam, homeGoals, awayGoals);
 
   const scorers = events.filter((e) => e.type === "goal");
   const motmPool = scorers.length > 0 ? scorers.map((e) => e.playerName) : [...homeTeam.squad, ...awayTeam.squad].map((p) => p.name);

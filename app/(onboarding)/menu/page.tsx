@@ -3,15 +3,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { User, Users, BookOpen, ChevronRight } from "lucide-react";
+import { User, Users, BookOpen, ChevronRight, Trophy, Swords } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Card } from "@/components/ui/Card";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ROUTES } from "@/constants/routes";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { useSessionStore } from "@/store/sessionStore";
 import { createRoom } from "@/services/roomService";
 import { FANTASY_CLUB_NAME_SUGGESTIONS } from "@/mocks/clubs";
 import { randomBetween } from "@/lib/delay";
+import { GameMode } from "@/types/room";
+import { determineCupTier } from "@/services/cupService";
+import { cn } from "@/lib/utils";
 
 function MenuOption({
   icon,
@@ -47,11 +51,15 @@ export default function MenuPage() {
   const setRoom = useSessionStore((s) => s.setRoom);
   const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const [isStartingSolo, setIsStartingSolo] = useState(false);
+  const [showModeSheet, setShowModeSheet] = useState(false);
 
-  async function handleSingleplayer() {
+  async function startSingleplayer(mode: GameMode) {
+    setShowModeSheet(false);
     setIsStartingSolo(true);
     const clubName = FANTASY_CLUB_NAME_SUGGESTIONS[randomBetween(0, FANTASY_CLUB_NAME_SUGGESTIONS.length - 1)];
-    const room = await createRoom("Você", clubName, 1);
+    // Singleplayer reaproveita exatamente a mesma criação de sala do Multiplayer —
+    // só com 1 jogador humano. O modo Copa usa a lógica de grupos/mata-mata já existente.
+    const room = await createRoom("Você", clubName, 1, "visible", mode);
     setRoom(room);
     setSelfParticipantId(room.participants[0].id);
     router.push(ROUTES.lobby(room.id));
@@ -73,8 +81,8 @@ export default function MenuPage() {
         <MenuOption
           icon={<User size={22} />}
           title="Singleplayer"
-          description="Você contra a IA — draft e liga completos"
-          onClick={handleSingleplayer}
+          description="Você contra a IA — draft, liga e copa completos"
+          onClick={() => setShowModeSheet(true)}
           isLoading={isStartingSolo}
         />
         <MenuOption
@@ -94,6 +102,31 @@ export default function MenuPage() {
       {isStartingSolo && (
         <p className="mt-6 animate-fade-up font-sans text-xs text-text-tertiary">Preparando sua sala...</p>
       )}
+
+      <BottomSheet isOpen={showModeSheet} onClose={() => setShowModeSheet(false)} title="Modo de jogo">
+        <div className="grid grid-cols-2 gap-2 pb-2">
+          <button
+            type="button"
+            onClick={() => startSingleplayer("league")}
+            className="flex flex-col items-center gap-1.5 rounded-card border border-border-subtle bg-surface px-3 py-4 text-center transition-colors hover:border-gold"
+          >
+            <Trophy size={20} className="text-gold" />
+            <span className="font-sans text-sm font-semibold text-text-primary">Liga</span>
+            <span className="font-sans text-[10px] leading-snug text-text-tertiary">Temporada completa, 38 rodadas.</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => startSingleplayer("cup")}
+            className="flex flex-col items-center gap-1.5 rounded-card border border-border-subtle bg-surface px-3 py-4 text-center transition-colors hover:border-teal"
+          >
+            <Swords size={20} className="text-teal-bright" />
+            <span className="font-sans text-sm font-semibold text-text-primary">Copa</span>
+            <span className="font-sans text-[10px] leading-snug text-text-tertiary">
+              {determineCupTier(1).totalTeams} equipes · grupos + mata-mata.
+            </span>
+          </button>
+        </div>
+      </BottomSheet>
     </Screen>
   );
 }

@@ -6,7 +6,7 @@ import { Screen } from "@/components/layout/Screen";
 import { Modal } from "@/components/ui/Modal";
 import { StandingsTable } from "@/components/features/league/StandingsTable";
 import { ROUTES } from "@/constants/routes";
-import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG } from "@/constants/game";
+import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
 import { simulateMatch, computeStandings } from "@/services/leagueService";
 import { determineCupTier, getQualifiedTeamIds, buildInitialBracket, advancePhaseIfComplete, resolvePenalties, computeGroupStandings } from "@/services/cupService";
@@ -371,10 +371,10 @@ export default function SimulationPage() {
               <p className="mb-1.5 font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Bônus utilizado</p>
               <p className="font-sans text-sm text-text-secondary">
                 <span className="font-semibold text-text-primary">{userMatch.homeTeamId === userTeam.id ? userTeam.clubName : opponentName}:</span>{" "}
-                {isHome ? userBoost : opponentBoost}
+                {BOOST_LABELS[isHome ? userBoost : opponentBoost]}
                 <span className="mx-2 text-text-tertiary">×</span>
                 <span className="font-semibold text-text-primary">{userMatch.awayTeamId === userTeam.id ? userTeam.clubName : opponentName}:</span>{" "}
-                {isHome ? opponentBoost : userBoost}
+                {BOOST_LABELS[isHome ? opponentBoost : userBoost]}
               </p>
             </div>
 

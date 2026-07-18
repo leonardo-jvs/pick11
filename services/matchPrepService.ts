@@ -1,6 +1,6 @@
 import { Player } from "@/types/player";
 import { Team, Boost } from "@/types/team";
-import { BOOST_POSITION_TARGETS, BOOST_OVERALL_BONUS, RECOVERY_PHYSICAL_BONUS } from "@/constants/game";
+import { BOOST_POSITION_TARGETS, BOOST_OVERALL_BONUS } from "@/constants/game";
 import { computeTeamOverall } from "@/services/compatibilityService";
 
 export interface EffectiveTeam {
@@ -29,13 +29,13 @@ export function applyBoost(team: Team, boost: Boost): EffectiveTeam {
   }
 
   let physical = team.physical;
-  if (boost === "Recuperação rápida") {
-    physical = Math.min(100, Math.round(physical + 100 * RECOVERY_PHYSICAL_BONUS));
-  }
   // "Poupar elenco" NÃO melhora o físico para esta partida — o retorno a 100%
   // só acontece depois que a partida termina (aplicado pela tela de Simulação).
 
-  const physicalAdjustment = Math.round((physical - 100) / 12);
+  // Físico baixo agora pesa de verdade: até ~8 pontos de Overall no físico
+  // mínimo (45%), o suficiente pra administrar o desgaste ser uma escolha
+  // estratégica real ao longo da temporada, não só um número decorativo.
+  const physicalAdjustment = Math.round((physical - 100) / 7);
   const overall = Math.max(40, computeTeamOverall(squad, team.tactics) + physicalAdjustment);
 
   return { squad, overall, physical, restoresFullPhysicalAfterMatch: boost === "Poupar elenco" };

@@ -76,7 +76,11 @@ export function FormationPitch({
             const label = slotLabels.get(slotId) ?? "";
             const isBoosted = !!player && !!boostedPositions?.includes(player.position) && !!boostDelta;
             const isPenalty = isBoosted && boostDelta! < 0;
-            const overall = player ? (tactics ? toDraftPlayerCard(player, tactics).overallFinal : player.overall) : null;
+            // Overall Final = overall base + compatibilidade — exatamente o mesmo valor já calculado no
+            // Draft. O bônus da Pré-Partida soma/subtrai EM CIMA desse valor (nunca do overall bruto),
+            // pra bater com o que a simulação realmente vai usar.
+            const finalOverall = player ? (tactics ? toDraftPlayerCard(player, tactics).overallFinal : player.overall) : null;
+            const boostedOverall = finalOverall !== null && boostDelta ? Math.max(40, Math.min(99, finalOverall + boostDelta)) : finalOverall;
 
             return (
               <div
@@ -104,13 +108,11 @@ export function FormationPitch({
                       <span className={cn("font-mono font-bold leading-none text-text-tertiary", overallSize)}>???</span>
                     ) : isBoosted ? (
                       <span className={cn("flex items-center gap-0.5 font-mono leading-none", nameSize)}>
-                        <span className="text-text-tertiary line-through">{player.overall}</span>
-                        <span className={cn("font-bold", isPenalty ? "text-danger" : "text-success")}>
-                          {Math.max(40, Math.min(99, player.overall + boostDelta!))}
-                        </span>
+                        <span className="text-text-tertiary line-through">{finalOverall}</span>
+                        <span className={cn("font-bold", isPenalty ? "text-danger" : "text-success")}>{boostedOverall}</span>
                       </span>
                     ) : (
-                      <span className={cn("font-mono font-bold leading-none text-gold", overallSize)}>{overall}</span>
+                      <span className={cn("font-mono font-bold leading-none text-gold", overallSize)}>{finalOverall}</span>
                     )}
                   </>
                 ) : (

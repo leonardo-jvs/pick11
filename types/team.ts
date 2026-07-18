@@ -10,7 +10,7 @@ export interface TeamTactics {
   defenseStyle: DefenseStyle;
 }
 
-export type Boost = "Nenhum" | "Bicho" | "Jogo importante" | "Recuperação rápida" | "Poupar elenco";
+export type Boost = "Nenhum" | "Bicho" | "Jogo importante" | "Poupar elenco";
 
 export interface RoomParticipant {
   id: string;
