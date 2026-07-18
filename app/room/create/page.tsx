@@ -38,10 +38,15 @@ export default function CreateRoomPage() {
     }
     setError(null);
     setIsCreating(true);
-    const room = await createRoom(playerName.trim(), clubName.trim(), maxPlayers, draftMode, gameMode);
-    setRoom(room);
-    setSelfParticipantId(room.participants[0].id);
-    router.push(ROUTES.lobby(room.id));
+    try {
+      const room = await createRoom(playerName.trim(), clubName.trim(), maxPlayers, draftMode, gameMode);
+      setRoom(room);
+      setSelfParticipantId(room.hostId);
+      router.push(ROUTES.lobby(room.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível criar a sala.");
+      setIsCreating(false);
+    }
   }
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Copy, Check } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -14,62 +14,84 @@ import { ParticipantList } from "@/components/features/lobby/ParticipantList";
 import { ROUTES } from "@/constants/routes";
 import { FORMATIONS, PLAY_STYLES } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
-import { generateMockJoiningParticipant } from "@/services/roomService";
+import { fetchRoom, updateOwnParticipant, leaveRoom, closeRoom } from "@/services/roomService";
+import { ensureAnonymousSession } from "@/lib/supabase/auth";
+import { useRoomRealtime } from "@/hooks/useRoomRealtime";
+import { useRoomPresence } from "@/hooks/useRoomPresence";
 import { initDraft } from "@/services/draftService";
 import { toast } from "@/store/toastStore";
+import { TeamTactics } from "@/types/team";
 
 type SheetKind = "formation" | "attack" | "defense" | null;
 
 export default function LobbyPage() {
   const router = useRouter();
+  const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
-  const updateParticipant = useSessionStore((s) => s.updateParticipant);
-  const addParticipant = useSessionStore((s) => s.addParticipant);
+  const setRoom = useSessionStore((s) => s.setRoom);
+  const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const setDraftState = useSessionStore((s) => s.setDraftState);
 
   const [openSheet, setOpenSheet] = useState<SheetKind>(null);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [reconnecting, setReconnecting] = useState(true);
+  const [clubNameDraft, setClubNameDraft] = useState("");
   const hasStartedRef = useRef(false);
 
   const self = room?.participants.find((p) => p.id === selfParticipantId) ?? null;
   const isSolo = room ? room.maxPlayers === 1 : false;
+  const isHost = !!room && !!self && room.hostId === self.id;
 
-  // Simula outros jogadores entrando na sala (mock de multiplayer real)
+  // Reconexão: se a store estiver vazia (aba nova, F5, voltou depois de fechar
+  // o navegador), busca a sala e o usuário direto do Supabase — a sessão
+  // anônima persistida é o que permite achar automaticamente qual equipe é a
+  // sua, sem precisar digitar nada de novo.
   useEffect(() => {
-    if (!room || isSolo) return;
-    if (room.participants.length >= room.maxPlayers) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await ensureAnonymousSession();
+        if (!room || room.id !== params.roomId) {
+          const freshRoom = await fetchRoom(params.roomId);
+          if (cancelled) return;
+          if (!freshRoom) {
+            toast.urgent("Essa sala não existe mais.");
+            router.push(ROUTES.roomHub);
+            return;
+          }
+          const mine = freshRoom.participants.find((p) => p.id === user.id);
+          if (!mine) {
+            toast.urgent("Você não faz parte dessa sala.");
+            router.push(ROUTES.roomHub);
+            return;
+          }
+          setRoom(freshRoom);
+          setSelfParticipantId(user.id);
+        }
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar.");
+      } finally {
+        if (!cancelled) setReconnecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.roomId]);
 
-    const interval = setInterval(() => {
-      const current = useSessionStore.getState().room;
-      if (!current || current.participants.length >= current.maxPlayers) return;
-      const participant = generateMockJoiningParticipant(current.participants.map((p) => p.name));
-      if (!participant) return;
-      addParticipant(participant);
-      toast.info(`${participant.name} entrou na sala`);
-    }, 2600);
+  // Sincronização em tempo real: qualquer mudança na sala (alguém entrou,
+  // saiu, ficou pronto) chega pra todo mundo automaticamente.
+  useRoomRealtime(room?.id ?? null);
+  const onlineUserIds = useRoomPresence(room?.id ?? null, self?.id ?? null);
 
-    return () => clearInterval(interval);
-  }, [room, isSolo, addParticipant]);
-
-  // Simula outros participantes ficando prontos aos poucos
   useEffect(() => {
-    if (!room || isSolo) return;
-
-    const interval = setInterval(() => {
-      const current = useSessionStore.getState().room;
-      if (!current) return;
-      const notReady = current.participants.filter((p) => p.id !== selfParticipantId && !p.isReady);
-      if (notReady.length === 0) return;
-      const target = notReady[Math.floor(Math.random() * notReady.length)];
-      updateParticipant(target.id, { isReady: true });
-      toast.success(`${target.name} ficou pronto`);
-    }, 2200);
-
-    return () => clearInterval(interval);
-  }, [room, isSolo, selfParticipantId, updateParticipant]);
+    setClubNameDraft(self?.clubName ?? "");
+  }, [self?.clubName]);
 
   // Início automático quando todos ficarem prontos
   useEffect(() => {
@@ -93,6 +115,14 @@ export default function LobbyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.participants]);
 
+  if (reconnecting) {
+    return (
+      <Screen center>
+        <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+      </Screen>
+    );
+  }
+
   if (!room || !self) {
     return (
       <Screen center>
@@ -104,9 +134,56 @@ export default function LobbyPage() {
     );
   }
 
-  const updateTactics = (patch: Partial<typeof self.tactics>) => {
-    updateParticipant(self.id, { tactics: { ...self.tactics, ...patch } });
-  };
+  async function handleToggleReady() {
+    if (!room || !self) return;
+    try {
+      await updateOwnParticipant(room.id, self.id, { isReady: !self.isReady });
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível atualizar.");
+    }
+  }
+
+  async function handleClubNameBlur() {
+    if (!room || !self || clubNameDraft.trim() === self.clubName) return;
+    try {
+      await updateOwnParticipant(room.id, self.id, { clubName: clubNameDraft.trim() || self.clubName });
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível atualizar o nome do clube.");
+    }
+  }
+
+  async function updateTactics(patch: Partial<TeamTactics>) {
+    if (!room || !self) return;
+    try {
+      await updateOwnParticipant(room.id, self.id, { tactics: { ...self.tactics, ...patch } });
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível atualizar a tática.");
+    }
+  }
+
+  async function handleLeave() {
+    if (!room || !self) return;
+    setIsLeaving(true);
+    try {
+      await leaveRoom(room.id, self.id);
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível sair da sala.");
+    } finally {
+      router.push(ROUTES.roomHub);
+    }
+  }
+
+  async function handleCloseRoom() {
+    if (!room) return;
+    setIsLeaving(true);
+    try {
+      await closeRoom(room.id);
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível fechar a sala.");
+    } finally {
+      router.push(ROUTES.roomHub);
+    }
+  }
 
   return (
     <Screen>
@@ -145,9 +222,10 @@ export default function LobbyPage() {
       <div className="mb-5">
         <Input
           label="Nome do seu clube"
-          value={self.clubName}
+          value={clubNameDraft}
           disabled={self.isReady}
-          onChange={(e) => updateParticipant(self.id, { clubName: e.target.value })}
+          onChange={(e) => setClubNameDraft(e.target.value)}
+          onBlur={handleClubNameBlur}
         />
       </div>
 
@@ -184,7 +262,7 @@ export default function LobbyPage() {
               Participantes ({room.participants.length}/{room.maxPlayers})
             </CardTitle>
           </CardHeader>
-          <ParticipantList participants={room.participants} selfId={self.id} hostId={room.participants[0]?.id ?? ""} />
+          <ParticipantList participants={room.participants} selfId={self.id} hostId={room.hostId} onlineUserIds={onlineUserIds} />
         </Card>
       )}
 
@@ -193,10 +271,20 @@ export default function LobbyPage() {
         size="lg"
         fullWidth
         isLoading={isStarting}
-        onClick={() => updateParticipant(self.id, { isReady: !self.isReady })}
+        onClick={handleToggleReady}
       >
         {isStarting ? "Iniciando..." : self.isReady ? "Cancelar pronto" : "Estou pronto"}
       </Button>
+
+      {!isSolo && isHost && (
+        <button
+          onClick={handleCloseRoom}
+          disabled={isLeaving}
+          className="mt-3 w-full text-center font-sans text-xs text-danger/80 transition-colors hover:text-danger"
+        >
+          Fechar sala para todos
+        </button>
+      )}
 
       {!isSolo && (
         <p className="mt-4 text-center font-sans text-xs text-text-tertiary">
@@ -244,13 +332,15 @@ export default function LobbyPage() {
 
       <Modal isOpen={leaveModalOpen} onClose={() => setLeaveModalOpen(false)} title="Sair da sala?">
         <p className="mb-5 font-sans text-sm text-text-secondary">
-          Você vai perder essa sala e precisará criar ou entrar em outra para jogar.
+          {isHost && room.participants.length > 1
+            ? "Você é o administrador — ao sair, a administração passa automaticamente para outro jogador da sala."
+            : "Você vai perder essa sala e precisará criar ou entrar em outra para jogar."}
         </p>
         <div className="flex gap-3">
           <Button variant="secondary" fullWidth onClick={() => setLeaveModalOpen(false)}>
             Cancelar
           </Button>
-          <Button variant="danger" fullWidth onClick={() => router.push(ROUTES.roomHub)}>
+          <Button variant="danger" fullWidth isLoading={isLeaving} onClick={handleLeave}>
             Sair
           </Button>
         </div>

@@ -15,6 +15,7 @@ import { FANTASY_CLUB_NAME_SUGGESTIONS } from "@/mocks/clubs";
 import { randomBetween } from "@/lib/delay";
 import { GameMode } from "@/types/room";
 import { determineCupTier } from "@/services/cupService";
+import { toast } from "@/store/toastStore";
 import { cn } from "@/lib/utils";
 
 function MenuOption({
@@ -57,12 +58,17 @@ export default function MenuPage() {
     setShowModeSheet(false);
     setIsStartingSolo(true);
     const clubName = FANTASY_CLUB_NAME_SUGGESTIONS[randomBetween(0, FANTASY_CLUB_NAME_SUGGESTIONS.length - 1)];
-    // Singleplayer reaproveita exatamente a mesma criação de sala do Multiplayer —
-    // só com 1 jogador humano. O modo Copa usa a lógica de grupos/mata-mata já existente.
-    const room = await createRoom("Você", clubName, 1, "visible", mode);
-    setRoom(room);
-    setSelfParticipantId(room.participants[0].id);
-    router.push(ROUTES.lobby(room.id));
+    try {
+      // Singleplayer reaproveita exatamente a mesma criação de sala do Multiplayer —
+      // só com 1 jogador humano. O modo Copa usa a lógica de grupos/mata-mata já existente.
+      const room = await createRoom("Você", clubName, 1, "visible", mode);
+      setRoom(room);
+      setSelfParticipantId(room.hostId);
+      router.push(ROUTES.lobby(room.id));
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível criar a sala.");
+      setIsStartingSolo(false);
+    }
   }
 
   return (

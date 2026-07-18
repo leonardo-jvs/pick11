@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/constants/routes";
 import { joinRoomByCode } from "@/services/roomService";
+import { getCurrentUserId } from "@/lib/supabase/auth";
 import { useSessionStore } from "@/store/sessionStore";
 
 export default function JoinRoomPage() {
@@ -34,8 +35,9 @@ export default function JoinRoomPage() {
     setIsJoining(true);
     try {
       const room = await joinRoomByCode(code, playerName.trim(), clubName.trim());
+      const myUserId = await getCurrentUserId();
       setRoom(room);
-      setSelfParticipantId(room.participants[room.participants.length - 1].id);
+      setSelfParticipantId(myUserId ?? room.participants[room.participants.length - 1].id);
       router.push(ROUTES.lobby(room.id));
     } catch (e) {
       setErrors({ code: e instanceof Error ? e.message : "Não foi possível entrar na sala" });

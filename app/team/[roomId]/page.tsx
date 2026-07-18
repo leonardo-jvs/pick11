@@ -46,7 +46,7 @@ export default function TeamPage() {
   const [generating, setGenerating] = useState(false);
 
   const self = room?.participants.find((p) => p.id === selfParticipantId);
-  const hostId = room?.participants[0]?.id;
+  const hostId = room?.hostId;
   const isHost = !!self && self.id === hostId;
   const isSolo = !!room && room.participants.length <= 1;
 
