@@ -18,7 +18,7 @@ import { fetchRoom, updateOwnParticipant, leaveRoom, closeRoom } from "@/service
 import { ensureAnonymousSession } from "@/lib/supabase/auth";
 import { useRoomRealtime } from "@/hooks/useRoomRealtime";
 import { useRoomPresence } from "@/hooks/useRoomPresence";
-import { initDraft } from "@/services/draftService";
+import { startDraftOnServer } from "@/services/draftSyncService";
 import { toast } from "@/store/toastStore";
 import { TeamTactics } from "@/types/team";
 
@@ -31,7 +31,6 @@ export default function LobbyPage() {
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const setRoom = useSessionStore((s) => s.setRoom);
   const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
-  const setDraftState = useSessionStore((s) => s.setDraftState);
 
   const [openSheet, setOpenSheet] = useState<SheetKind>(null);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -93,9 +92,21 @@ export default function LobbyPage() {
     setClubNameDraft(self?.clubName ?? "");
   }, [self?.clubName]);
 
-  // Início automático quando todos ficarem prontos
+  // Início automático quando todos ficarem prontos — só o HOST escreve o
+  // estado inicial do Draft no servidor (senão todo mundo tentaria criar o
+  // mesmo draft ao mesmo tempo). Os demais participantes reagem à mudança de
+  // room.status, que chega via Realtime pra todo mundo igual.
   useEffect(() => {
     if (!room || !self || hasStartedRef.current) return;
+
+    if (room.status === "drafting") {
+      // Já começou (por mim mesmo ou por outro cliente que viu primeiro) — só navega.
+      hasStartedRef.current = true;
+      router.push(ROUTES.draft(room.id));
+      return;
+    }
+
+    if (!isHost) return;
     const everyoneReady = room.participants.every((p) => p.isReady);
     const enoughPlayers = room.participants.length >= room.minPlayers;
     if (!everyoneReady || !enoughPlayers) return;
@@ -105,15 +116,19 @@ export default function LobbyPage() {
     toast.success("Todos prontos! Iniciando o draft...");
 
     const t = setTimeout(async () => {
-      const humans = room.participants.filter((p) => p.isHuman);
-      const draftState = await initDraft(room.id, humans);
-      setDraftState(draftState);
-      router.push(ROUTES.draft(room.id));
+      try {
+        await startDraftOnServer(room);
+        router.push(ROUTES.draft(room.id));
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível iniciar o draft.");
+        hasStartedRef.current = false;
+        setIsStarting(false);
+      }
     }, 1600);
 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.participants]);
+  }, [room?.participants, room?.status]);
 
   if (reconnecting) {
     return (

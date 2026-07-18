@@ -1,26 +1,42 @@
-# Pick11 — Multiplayer Online (Fase 1: Supabase + Salas/Lobby)
+# Pick11 — Multiplayer Online (Fases 1 e 2: Supabase + Salas/Lobby + Draft)
 
-Este documento explica como configurar o backend Supabase desta Fase 1, rodar o
-projeto localmente e publicar na Vercel.
+Este documento explica como configurar o backend Supabase destas fases, rodar
+o projeto localmente e publicar na Vercel.
 
-## O que esta fase entrega
+## O que já está pronto
 
+**Fase 1 — Salas e Lobby:**
 - Banco de dados real (Postgres via Supabase) para salas e participantes.
-- Sincronização em tempo real do Lobby (Supabase Realtime): quando alguém
-  entra, sai, fica pronto ou muda de tática, todo mundo na sala vê na hora,
-  sem dar F5.
-- Presença online/offline por sala (Supabase Realtime Presence).
+- Sincronização em tempo real do Lobby: quando alguém entra, sai, fica pronto
+  ou muda de tática, todo mundo na sala vê na hora, sem dar F5.
+- Presença online/offline por sala.
 - Identidade persistente via Supabase Auth anônimo — atualizar a página ou
-  fechar o navegador e voltar depois reconecta você automaticamente na sua
-  sala e equipe, sem precisar digitar nada de novo.
-- Administrador de sala real (`rooms.host_id`), com transferência automática
-  se o host sair, e ação de fechar a sala pra todo mundo.
+  fechar o navegador e voltar depois reconecta você automaticamente.
+- Administrador de sala real, com transferência automática se o host sair.
 
-O que **ainda não** está nesta fase (planejado para as Fases 2 e 3): Draft
-sincronizado entre jogadores, partidas simultâneas com canais por confronto,
-classificação/calendário no servidor, botão "Nova Liga". Até lá, essas etapas
-continuam rodando localmente no navegador de cada jogador, como já
-funcionavam antes desta sprint.
+**Fase 2 — Draft sincronizado:**
+- O Draft inteiro agora existe no servidor (tabela `draft_states`): timer,
+  ordem das escolhas, cartas disponíveis, jogadores já escolhidos — tudo
+  sincronizado em tempo real entre todos os participantes.
+- Todos os clientes calculam a contagem regressiva a partir do mesmo
+  `turn_deadline` do servidor, não de um relógio local — sem risco de
+  divergência entre navegadores.
+- Proteção contra corrida (ex: o timer zera no exato instante em que alguém
+  confirma o pick): a escrita usa concorrência otimista — só a primeira
+  tentativa é aceita, as demais são descartadas e sincronizadas via Realtime.
+  Nenhuma duplicação de turno ou "pick fantasma" é possível.
+- Reconexão também funciona no meio do Draft: atualizar a página traz você de
+  volta exatamente pro turno em que a sala está.
+- Só o host escreve o estado inicial do Draft (evita que múltiplos clientes
+  tentem criar o mesmo draft ao mesmo tempo); os demais participantes reagem
+  automaticamente à mudança de status da sala.
+
+O que **ainda não** está sincronizado (planejado para a Fase 3): partidas
+simultâneas com canais por confronto, classificação/calendário no servidor,
+Pós-jogo, botão "Nova Liga". A geração da Liga/Copa (elencos de bot, calendário)
+e as partidas continuam rodando localmente no navegador de cada jogador, como
+já funcionavam antes desta sprint — se houver mais de um humano na sala, cada
+um roda essa etapa de forma independente por enquanto.
 
 ---
 
@@ -31,21 +47,17 @@ funcionavam antes desta sprint.
    essa senha) e a região mais próxima dos seus jogadores.
 3. Aguarde alguns minutos até o projeto ficar pronto.
 
-## 2. Rodar a migration (criar as tabelas)
+## 2. Rodar as migrations (criar as tabelas)
 
-1. No painel do seu projeto, vá em **SQL Editor** (ícone de terminal na
-   barra lateral) → **New query**.
-2. Abra o arquivo `supabase/migrations/0001_rooms_and_lobby.sql` deste
-   repositório, copie todo o conteúdo e cole no editor.
-3. Clique em **Run**. Deve aparecer "Success. No rows returned".
+1. No painel do seu projeto, vá em **SQL Editor** → **New query**.
+2. Rode, **nesta ordem**, o conteúdo de cada arquivo:
+   - `supabase/migrations/0001_rooms_and_lobby.sql`
+   - `supabase/migrations/0002_draft_state.sql`
+3. Clique em **Run** para cada um. Deve aparecer "Success. No rows returned".
 
-Isso cria as tabelas `rooms` e `room_participants`, os índices, as políticas
-de segurança (RLS) e habilita o Realtime para as duas tabelas.
-
-Se você preferir usar a [Supabase CLI](https://supabase.com/docs/guides/cli)
-em vez do SQL Editor: o arquivo já está no formato esperado em
-`supabase/migrations/`, então `supabase db push` (com o projeto linkado)
-também funciona.
+Se preferir a [Supabase CLI](https://supabase.com/docs/guides/cli): os dois
+arquivos já estão no formato esperado em `supabase/migrations/`, então
+`supabase db push` (com o projeto linkado) roda os dois na ordem certa.
 
 ## 3. Habilitar login anônimo
 
@@ -126,37 +138,46 @@ ignora todas as políticas de RLS e não deve existir no frontend.
 ```
 Frontend (Next.js, client components)
    │
-   ├─ lib/supabase/client.ts     → cliente único do Supabase (browser)
-   ├─ lib/supabase/auth.ts       → sessão anônima persistente
-   ├─ services/roomService.ts    → CRUD de salas/participantes (Postgres)
-   ├─ hooks/useRoomRealtime.ts   → sincroniza mudanças no banco (Postgres Changes)
-   ├─ hooks/useRoomPresence.ts   → quem está online agora (Realtime Presence)
-   └─ store/sessionStore.ts      → cache local (Zustand) espelhando o servidor
+   ├─ lib/supabase/client.ts       → cliente único do Supabase (browser)
+   ├─ lib/supabase/auth.ts         → sessão anônima persistente
+   ├─ services/roomService.ts      → CRUD de salas/participantes
+   ├─ services/draftSyncService.ts → inicia/lê/escreve o Draft (com CAS)
+   ├─ services/draftService.ts     → TODA a lógica do Draft (inalterada — puro TS)
+   ├─ hooks/useRoomRealtime.ts     → sincroniza rooms/room_participants
+   ├─ hooks/useRoomPresence.ts     → quem está online agora
+   ├─ hooks/useDraftRealtime.ts    → sincroniza draft_states
+   └─ store/sessionStore.ts        → cache local (Zustand) espelhando o servidor
    │
    ▼
 Supabase (Postgres + Realtime + Auth)
    ├─ rooms
-   └─ room_participants
+   ├─ room_participants
+   └─ draft_states  (Fase 2)
 ```
 
-O Zustand continua existindo, mas mudou de papel: antes ele *era* a fonte da
-verdade; agora ele é um espelho local do que está no Supabase, atualizado
-automaticamente pelos hooks de tempo real. Isso deixa o resto da interface
-(que já lê do `sessionStore`) praticamente intocado.
+Importante: nenhuma regra do Draft foi duplicada em SQL. `services/draftService.ts`
+continua sendo a única fonte de verdade da lógica (elegibilidade de posição,
+ordem snake, sorteio de candidatos, auto-pick) — o Supabase só guarda e
+sincroniza o `DraftState` que essas funções já produziam, agora compartilhado
+entre todos os participantes em vez de viver isolado em cada navegador.
 
 ## Por que Supabase e não um backend separado
 
 Confirmando a decisão pedida no briefing: Supabase atende os três requisitos
 (Postgres + tempo real + fácil de publicar na Vercel) sem precisar manter um
 servidor Node/Express à parte. Não há limitação técnica que impeça essa
-escolha para o que esta fase e as próximas duas precisam.
+escolha para o que esta fase e a próxima precisam.
 
 ## Limitação importante desta entrega
 
 Não tenho acesso de rede a `supabase.co` neste ambiente, então não consegui
-provisionar um projeto real nem rodar a migration/testar a sincronização ao
-vivo. O SQL e o código foram escritos com cuidado seguindo a documentação
-oficial do Supabase, mas **teste num projeto real antes de considerar essa
-fase 100% validada** — especialmente os nomes de canais do Realtime e as
-políticas de RLS, que são a parte mais sensível a pequenos erros de sintaxe
-que só aparecem rodando de verdade.
+provisionar um projeto real nem rodar as migrations/testar a sincronização ao
+vivo — nem na Fase 1, nem nesta. O SQL e o código foram escritos com cuidado
+seguindo a documentação oficial do Supabase, e revisei manualmente as
+políticas de RLS mais de uma vez em busca de erros sutis (encontrei e corrigi
+dois: uma política de UPDATE bloqueando indevidamente a transferência de
+administrador na Fase 1, e um GRANT faltando na função de gerar código de
+sala). Mesmo assim, **teste num projeto real antes de considerar essa fase
+100% validada** — em especial, abra o Draft em duas abas anônimas diferentes
+e confirme que uma escolha feita em uma aba aparece instantaneamente na
+outra, e que atualizar a página no meio do Draft reconecta corretamente.

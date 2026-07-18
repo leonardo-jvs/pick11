@@ -10,7 +10,6 @@ export const DRAFT_CONFIG = {
   SQUAD_SIZE: 18, // 11 titulares + 7 reservas
   CANDIDATES_PER_ROUND: 6, // jogadores mostrados por rodada
   PICKS_PER_ROUND: 2, // escolhas por rodada (a última rodada de cada participante pode pedir só 1, se sobrar ímpar)
-  BOT_PICK_ANIMATION_MS: 1400,
 } as const;
 
 export const LEAGUE_CONFIG = {

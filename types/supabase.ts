@@ -32,3 +32,11 @@ export interface RoomParticipantRow {
   joined_at: string;
   updated_at: string;
 }
+
+export interface DraftStateRow {
+  room_id: string;
+  state: unknown; // DraftState (types/draft.ts), guardado como JSONB
+  turn_version: number;
+  turn_deadline: string | null;
+  updated_at: string;
+}

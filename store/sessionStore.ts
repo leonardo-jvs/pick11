@@ -11,6 +11,10 @@ interface SessionState {
   room: Room | null;
   selfParticipantId: string | null;
   draftState: DraftState | null;
+  /** Trava de concorrência otimista do Draft sincronizado (Fase 2) — a versão atual conhecida no servidor */
+  draftVersion: number;
+  /** Quando o turno atual expira (ISO), vindo do servidor — a contagem regressiva é sempre calculada a partir daqui, nunca de um relógio local isolado */
+  draftDeadline: string | null;
   teams: Team[];
   schedule: { round: number; homeId: string; awayId: string }[];
   matches: Match[];
@@ -29,6 +33,7 @@ interface SessionState {
   addParticipant: (participant: Room["participants"][number]) => void;
   setSelfParticipantId: (id: string) => void;
   setDraftState: (state: DraftState) => void;
+  setDraftSync: (version: number, deadline: string | null) => void;
   setTeams: (teams: Team[]) => void;
   updateTeam: (teamId: string, patch: Partial<Team>) => void;
   setSchedule: (schedule: { round: number; homeId: string; awayId: string }[]) => void;
@@ -47,6 +52,8 @@ const initialState = {
   room: null,
   selfParticipantId: null,
   draftState: null,
+  draftVersion: 0,
+  draftDeadline: null as string | null,
   teams: [],
   schedule: [],
   matches: [],
@@ -79,6 +86,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }),
   setSelfParticipantId: (id) => set({ selfParticipantId: id }),
   setDraftState: (draftState) => set({ draftState }),
+  setDraftSync: (draftVersion, draftDeadline) => set({ draftVersion, draftDeadline }),
   setTeams: (teams) => set({ teams }),
   updateTeam: (teamId, patch) =>
     set((state) => ({

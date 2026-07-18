@@ -16,7 +16,6 @@ import { randomBetween } from "@/lib/delay";
 import { GameMode } from "@/types/room";
 import { determineCupTier } from "@/services/cupService";
 import { toast } from "@/store/toastStore";
-import { cn } from "@/lib/utils";
 
 function MenuOption({
   icon,

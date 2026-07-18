@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Check, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Timer } from "@/components/ui/Timer";
@@ -12,27 +12,75 @@ import { ROUTES } from "@/constants/routes";
 import { DRAFT_CONFIG } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
 import { toast } from "@/store/toastStore";
-import {
-  getCandidateCards,
-  confirmPick,
-  resolveTimeout,
-  getSquadForParticipant,
-  isCandidateEligible,
-} from "@/services/draftService";
+import { getCandidateCards, confirmPick, resolveTimeout, getSquadForParticipant, isCandidateEligible } from "@/services/draftService";
+import { fetchDraftState, submitDraftState } from "@/services/draftSyncService";
+import { fetchRoom } from "@/services/roomService";
+import { ensureAnonymousSession } from "@/lib/supabase/auth";
+import { useDraftRealtime } from "@/hooks/useDraftRealtime";
 import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
 import { cn } from "@/lib/utils";
 
 export default function DraftPage() {
   const router = useRouter();
+  const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
+  const setRoom = useSessionStore((s) => s.setRoom);
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
+  const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const draftState = useSessionStore((s) => s.draftState);
   const setDraftState = useSessionStore((s) => s.setDraftState);
+  const draftVersion = useSessionStore((s) => s.draftVersion);
+  const draftDeadline = useSessionStore((s) => s.draftDeadline);
+  const setDraftSync = useSessionStore((s) => s.setDraftSync);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const [lastPickFeed, setLastPickFeed] = useState<{ clubName: string; players: string[] } | null>(null);
-  const resolvedTurnRef = useRef<number>(-1);
+  const [reconnecting, setReconnecting] = useState(true);
   const feedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reconexão: se a store estiver vazia (F5 no meio do Draft, aba nova, etc.),
+  // busca a sala e o estado do Draft direto do Supabase. A partir daqui, o
+  // useDraftRealtime abaixo mantém tudo sincronizado automaticamente.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await ensureAnonymousSession();
+        let currentRoom = room;
+        if (!currentRoom || currentRoom.id !== params.roomId) {
+          const freshRoom = await fetchRoom(params.roomId);
+          if (cancelled) return;
+          if (!freshRoom) {
+            toast.urgent("Essa sala não existe mais.");
+            router.push(ROUTES.roomHub);
+            return;
+          }
+          currentRoom = freshRoom;
+          setRoom(freshRoom);
+          setSelfParticipantId(user.id);
+        }
+        const snapshot = await fetchDraftState(currentRoom.id);
+        if (cancelled) return;
+        if (snapshot) {
+          setDraftState(snapshot.state);
+          setDraftSync(snapshot.version, snapshot.deadline);
+        }
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar ao Draft.");
+      } finally {
+        if (!cancelled) setReconnecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.roomId]);
+
+  // Sincronização em tempo real: qualquer pick confirmado ou turno resolvido
+  // (por mim ou por qualquer outro participante) chega automaticamente.
+  useDraftRealtime(room?.id ?? null);
 
   const currentTurn = draftState ? draftState.turns[draftState.currentTurnIndex] ?? null : null;
   const isSelfTurn = !!currentTurn && currentTurn.participantId === selfParticipantId;
@@ -71,20 +119,16 @@ export default function DraftPage() {
     return getCandidateCards(draftState);
   }, [draftState]);
 
-  // Simula automaticamente a vez de outros participantes humanos (não há backend real)
-  useEffect(() => {
-    if (!draftState || !currentTurn || !turnParticipant) return;
-    if (isSelfTurn || draftState.isComplete) return;
-    if (resolvedTurnRef.current === currentTurn.index) return;
-    resolvedTurnRef.current = currentTurn.index;
-
-    const timeout = setTimeout(() => {
-      const { state: next } = resolveTimeout(draftState, []);
-      setDraftState(next);
-    }, DRAFT_CONFIG.BOT_PICK_ANIMATION_MS);
-
-    return () => clearTimeout(timeout);
-  }, [draftState, currentTurn, turnParticipant, isSelfTurn, setDraftState]);
+  // Tempo restante calculado a partir do deadline do servidor (não de um
+  // contador local) — recalculado só quando o turno ou o deadline mudam, pra
+  // não reiniciar o Timer a cada re-render. Isso garante que todo mundo (e
+  // quem acabou de reconectar) veja a contagem certa, sem depender do relógio
+  // de cada navegador.
+  const timerSeconds = useMemo(() => {
+    if (!draftDeadline) return DRAFT_CONFIG.PICK_TIMER_SECONDS;
+    return Math.max(0, Math.round((new Date(draftDeadline).getTime() - Date.now()) / 1000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTurn?.index, draftDeadline]);
 
   useEffect(() => {
     if (isSelfTurn) toast.success("Sua vez de escolher!");
@@ -96,6 +140,14 @@ export default function DraftPage() {
       router.push(ROUTES.team(room.id));
     }
   }, [draftState?.isComplete, room, router]);
+
+  if (reconnecting) {
+    return (
+      <main className="flex h-dvh w-full flex-col items-center justify-center bg-base px-5">
+        <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+      </main>
+    );
+  }
 
   if (!room || !draftState || !currentTurn) {
     return (
@@ -128,21 +180,42 @@ export default function DraftPage() {
     });
   }
 
-  function handleConfirm() {
-    if (!isSelfTurn || selectedIds.length !== requiredPicks) return;
+  async function handleConfirm() {
+    if (!isSelfTurn || selectedIds.length !== requiredPicks || !room || submitting) return;
     const { state: next, error } = confirmPick(draftState!, selectedIds);
     if (error) {
       toast.urgent(error);
       return;
     }
-    setDraftState(next);
+    setSubmitting(true);
+    try {
+      const accepted = await submitDraftState(room.id, draftVersion, next);
+      if (!accepted) {
+        // Alguém mais rápido já escreveu primeiro (ex: o timer zerou em outro
+        // cliente no mesmo instante) — não é um erro, só aceitamos o que o
+        // Realtime já está trazendo.
+        toast.info("O turno já avançou — sincronizando...");
+      }
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível confirmar. Tente de novo.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function handleTimeout() {
-    if (!isSelfTurn) return;
-    const { state: next } = resolveTimeout(draftState!, selectedIds);
-    setDraftState(next);
-    toast.info(selectedIds.length > 0 ? "Picks confirmadas com o tempo esgotado." : "Tempo esgotado — escolha automática.");
+  async function handleTimeout() {
+    if (!draftState || !currentTurn || !room) return;
+    const { state: next } = resolveTimeout(draftState, isSelfTurn ? selectedIds : []);
+    try {
+      const accepted = await submitDraftState(room.id, draftVersion, next);
+      if (accepted && isSelfTurn) {
+        toast.info(selectedIds.length > 0 ? "Picks confirmadas com o tempo esgotado." : "Tempo esgotado — escolha automática.");
+      }
+      // Se não foi aceito, outro cliente (o próprio dono do turno, ou
+      // qualquer outro participante observando) já resolveu primeiro.
+    } catch {
+      // Falha pontual de rede — o Realtime volta a sincronizar sozinho.
+    }
   }
 
   const selfFilledSlots = selfParticipant ? draftState.filledSlots[selfParticipant.id] ?? {} : {};
@@ -218,9 +291,9 @@ export default function DraftPage() {
                   </span>
                 </p>
                 <Timer
-                  seconds={DRAFT_CONFIG.PICK_TIMER_SECONDS}
+                  seconds={timerSeconds}
                   resetKey={currentTurn.index}
-                  onComplete={isSelfTurn ? handleTimeout : undefined}
+                  onComplete={handleTimeout}
                   size={52}
                 />
               </div>
@@ -283,7 +356,8 @@ export default function DraftPage() {
               fullWidth
               size="lg"
               className="shrink-0"
-              disabled={!isSelfTurn || selectedIds.length !== requiredPicks}
+              isLoading={submitting}
+              disabled={!isSelfTurn || selectedIds.length !== requiredPicks || submitting}
               onClick={handleConfirm}
             >
               {isSelfTurn ? `Confirmar pick (${selectedIds.length}/${requiredPicks})` : "Aguarde sua vez"}
