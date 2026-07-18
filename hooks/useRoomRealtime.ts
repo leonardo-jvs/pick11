@@ -23,11 +23,20 @@ export function useRoomRealtime(roomId: string | null) {
     if (!roomId) return;
     const supabase = getSupabaseClient();
     let cancelled = false;
+    // rooms não tem um contador de versão como draft_states/competition_states
+    // — usa uma comparação leve do conteúdo (payload pequeno: sala + poucos
+    // participantes) pra evitar re-renderizações quando o evento recebido não
+    // trouxe nada de fato diferente.
+    let lastAppliedSnapshot: string | null = null;
 
     async function refresh() {
       try {
         const room = await fetchRoom(roomId!);
-        if (!cancelled && room) setRoom(room);
+        if (cancelled || !room) return;
+        const snapshot = JSON.stringify(room);
+        if (lastAppliedSnapshot === snapshot) return;
+        lastAppliedSnapshot = snapshot;
+        setRoom(room);
       } catch {
         // Falha pontual de rede — o próximo evento realtime (ou o polling do
         // próprio Supabase ao reconectar o websocket) tenta de novo sozinho.

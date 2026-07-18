@@ -229,6 +229,24 @@ export default function PreMatchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSolo, room?.id, teams.length, currentRound, cupState?.phase, cupState?.currentGroupRound]);
 
+  // Rede de segurança: se a competição já terminou (Copa com fase "finished",
+  // ou Liga que já passou da última rodada) a Pré-Partida nunca deve tentar
+  // mostrar um confronto — sai imediatamente pra tela de encerramento certa.
+  // Sem isso, um time cuja participação já acabou (eliminado ou campeão) podia
+  // ficar preso aqui mostrando "aguardando confronto" pra sempre, porque não
+  // existe mesmo nenhum próximo adversário. Vale igual pra Singleplayer e
+  // Multiplayer — não é um comportamento exclusivo de nenhum dos dois.
+  useEffect(() => {
+    if (!room || teams.length === 0) return;
+    if (isCup) {
+      if (cupState?.phase === "finished") router.push(ROUTES.cupFinal(room.id));
+    } else if (schedule.length > 0) {
+      const totalRounds = Math.max(...schedule.map((f) => f.round));
+      if (currentRound > totalRounds) router.push(ROUTES.leagueFinal(room.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.id, teams.length, isCup, cupState?.phase, schedule, currentRound]);
+
   if (reconnecting) {
     return (
       <Screen center>

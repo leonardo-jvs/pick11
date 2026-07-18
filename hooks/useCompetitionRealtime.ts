@@ -22,11 +22,19 @@ export function useCompetitionRealtime(roomId: string | null) {
     if (!roomId) return;
     const supabase = getSupabaseClient();
     let cancelled = false;
+    // `version` só incrementa quando uma escrita de verdade é aceita (é a
+    // mesma trava otimista usada pra concorrência) — reaproveitar esse número
+    // pra pular re-renderizações quando o evento recebido não trouxe nada
+    // novo (ex: reconexão do Realtime reenviando o mesmo snapshot).
+    let lastAppliedVersion: number | null = null;
 
     async function refresh() {
       try {
         const snapshot = await fetchCompetitionState(roomId!);
         if (cancelled || !snapshot) return;
+        if (lastAppliedVersion === snapshot.version) return;
+        lastAppliedVersion = snapshot.version;
+
         setTeams(snapshot.teams);
         if (snapshot.schedule) setSchedule(snapshot.schedule);
         if (snapshot.cupState) setCupState(snapshot.cupState);

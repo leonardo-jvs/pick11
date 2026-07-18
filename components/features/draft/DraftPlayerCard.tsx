@@ -113,13 +113,12 @@ export function DraftPlayerCard({
   }
 
   return (
-    <motion.div
-      whileHover={disabled ? undefined : { y: -3, scale: 1.02 }}
-      transition={{ duration: 0.15, ease: "easeOut" }}
+    <div
       onClick={disabled ? undefined : onToggle}
       className={cn(
-        "relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border-2 transition-all duration-200",
+        "relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border-2 transition-all duration-150 ease-out",
         "px-[clamp(5px,1.55vmin,12px)] py-[clamp(4px,1.35vmin,10px)]",
+        !disabled && "hover:-translate-y-[3px] hover:scale-[1.02]",
         theme.cardBg,
         selected ? "border-success shadow-glow-success" : cn(theme.border, !disabled && theme.glow),
         disabled && "cursor-not-allowed opacity-50 hover:shadow-none"
@@ -268,6 +267,6 @@ export function DraftPlayerCard({
       {disabled && disabledReason && (
         <p className="mt-1 truncate text-center font-sans leading-tight text-[clamp(5.5px,1.15vmin,9px)] text-danger">{disabledReason}</p>
       )}
-    </motion.div>
+    </div>
   );
 }

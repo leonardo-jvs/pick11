@@ -19,11 +19,15 @@ export function useDraftRealtime(roomId: string | null) {
     if (!roomId) return;
     const supabase = getSupabaseClient();
     let cancelled = false;
+    let lastAppliedVersion: number | null = null;
 
     async function refresh() {
       try {
         const snapshot = await fetchDraftState(roomId!);
         if (cancelled || !snapshot) return;
+        if (lastAppliedVersion === snapshot.version) return;
+        lastAppliedVersion = snapshot.version;
+
         setDraftState(snapshot.state);
         setDraftSync(snapshot.version, snapshot.deadline);
       } catch {
