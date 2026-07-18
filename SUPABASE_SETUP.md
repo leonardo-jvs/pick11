@@ -1,4 +1,4 @@
-# Pick11 — Multiplayer Online (Fases 1 e 2: Supabase + Salas/Lobby + Draft)
+# Pick11 — Multiplayer Online (Fases 1, 2 e 3: Supabase completo)
 
 Este documento explica como configurar o backend Supabase destas fases, rodar
 o projeto localmente e publicar na Vercel.
@@ -24,19 +24,39 @@ o projeto localmente e publicar na Vercel.
 - Proteção contra corrida (ex: o timer zera no exato instante em que alguém
   confirma o pick): a escrita usa concorrência otimista — só a primeira
   tentativa é aceita, as demais são descartadas e sincronizadas via Realtime.
-  Nenhuma duplicação de turno ou "pick fantasma" é possível.
-- Reconexão também funciona no meio do Draft: atualizar a página traz você de
-  volta exatamente pro turno em que a sala está.
-- Só o host escreve o estado inicial do Draft (evita que múltiplos clientes
-  tentem criar o mesmo draft ao mesmo tempo); os demais participantes reagem
-  automaticamente à mudança de status da sala.
+- Reconexão também funciona no meio do Draft.
+- Só o host escreve o estado inicial do Draft; os demais participantes
+  reagem automaticamente à mudança de status da sala.
 
-O que **ainda não** está sincronizado (planejado para a Fase 3): partidas
-simultâneas com canais por confronto, classificação/calendário no servidor,
-Pós-jogo, botão "Nova Liga". A geração da Liga/Copa (elencos de bot, calendário)
-e as partidas continuam rodando localmente no navegador de cada jogador, como
-já funcionavam antes desta sprint — se houver mais de um humano na sala, cada
-um roda essa etapa de forma independente por enquanto.
+**Fase 3 — Liga/Copa sincronizadas (elencos, partidas, classificação):**
+- Elencos, calendário (Liga) ou grupos/chaveamento (Copa) são gerados uma
+  única vez pelo host e sincronizados pra todo mundo (tabela `competition_states`).
+- Pré-Partida com confirmação por confronto: quando o adversário é humano, o
+  botão mostra "Iniciar Partida (1/2)" e atualiza em tempo real assim que ele
+  confirma também.
+- Cada rodada só é calculada quando todos os jogadores envolvidos confirmaram
+  (ou o prazo de 10s vence) — e **qualquer participante conectado** pode
+  disparar esse cálculo, não só o host, então a rodada nunca trava se o host
+  cair no meio do caminho. Protegido pela mesma trava de concorrência das
+  fases anteriores.
+- Todos os jogadores de um confronto veem exatamente o mesmo resultado (placar,
+  eventos, estatísticas) — calculado uma única vez no servidor.
+- Classificação, calendário e físico dos times atualizam automaticamente pra
+  todo mundo depois de cada rodada.
+- "Nova Liga"/"Nova Copa": botão exclusivo do host nas telas de Final —
+  encerra a competição atual, mantém todos na mesma sala, e devolve pro Lobby
+  prontos pra um novo Draft.
+
+**Importante sobre como as partidas são sincronizadas:** o Pick11 não tem (e
+esta sprint não construiu) um motor de partida que gera eventos em tempo real
+minuto a minuto. O resultado de uma partida sempre foi — e continua sendo —
+calculado de uma vez só; o que muda agora é que esse cálculo acontece no
+servidor, então os dois jogadores de um confronto leem exatamente o mesmo
+resultado e cada um narra essa mesma informação localmente com o efeito de
+"ao vivo" que já existia. Construir um motor de partida com eventos
+realmente transmitidos em tempo real seria um projeto à parte, bem maior que
+esta sprint — se isso for importante pra você, vale conversarmos sobre como
+abordar especificamente.
 
 ---
 
@@ -53,11 +73,12 @@ um roda essa etapa de forma independente por enquanto.
 2. Rode, **nesta ordem**, o conteúdo de cada arquivo:
    - `supabase/migrations/0001_rooms_and_lobby.sql`
    - `supabase/migrations/0002_draft_state.sql`
+   - `supabase/migrations/0003_competition_state.sql`
 3. Clique em **Run** para cada um. Deve aparecer "Success. No rows returned".
 
-Se preferir a [Supabase CLI](https://supabase.com/docs/guides/cli): os dois
+Se preferir a [Supabase CLI](https://supabase.com/docs/guides/cli): os três
 arquivos já estão no formato esperado em `supabase/migrations/`, então
-`supabase db push` (com o projeto linkado) roda os dois na ordem certa.
+`supabase db push` (com o projeto linkado) roda todos na ordem certa.
 
 ## 3. Habilitar login anônimo
 
@@ -138,46 +159,66 @@ ignora todas as políticas de RLS e não deve existir no frontend.
 ```
 Frontend (Next.js, client components)
    │
-   ├─ lib/supabase/client.ts       → cliente único do Supabase (browser)
-   ├─ lib/supabase/auth.ts         → sessão anônima persistente
-   ├─ services/roomService.ts      → CRUD de salas/participantes
-   ├─ services/draftSyncService.ts → inicia/lê/escreve o Draft (com CAS)
-   ├─ services/draftService.ts     → TODA a lógica do Draft (inalterada — puro TS)
-   ├─ hooks/useRoomRealtime.ts     → sincroniza rooms/room_participants
-   ├─ hooks/useRoomPresence.ts     → quem está online agora
-   ├─ hooks/useDraftRealtime.ts    → sincroniza draft_states
-   └─ store/sessionStore.ts        → cache local (Zustand) espelhando o servidor
+   ├─ lib/supabase/client.ts            → cliente único do Supabase (browser)
+   ├─ lib/supabase/auth.ts              → sessão anônima persistente
+   ├─ services/roomService.ts           → CRUD de salas/participantes
+   ├─ services/draftSyncService.ts      → inicia/lê/escreve o Draft (com CAS)
+   ├─ services/competitionSyncService.ts → inicia/lê/escreve a Liga/Copa (com CAS)
+   ├─ services/draftService.ts          → TODA a lógica do Draft (inalterada)
+   ├─ services/leagueService.ts         → TODA a lógica da Liga (inalterada)
+   ├─ services/cupService.ts            → TODA a lógica da Copa (inalterada)
+   ├─ services/matchPrepService.ts      → lógica de bônus/físico (inalterada)
+   ├─ hooks/useRoomRealtime.ts          → sincroniza rooms/room_participants
+   ├─ hooks/useRoomPresence.ts          → quem está online agora
+   ├─ hooks/useDraftRealtime.ts         → sincroniza draft_states
+   ├─ hooks/useCompetitionRealtime.ts   → sincroniza competition_states
+   └─ store/sessionStore.ts             → cache local (Zustand) espelhando o servidor
    │
    ▼
 Supabase (Postgres + Realtime + Auth)
    ├─ rooms
    ├─ room_participants
-   └─ draft_states  (Fase 2)
+   ├─ draft_states        (Fase 2)
+   └─ competition_states  (Fase 3)
 ```
 
-Importante: nenhuma regra do Draft foi duplicada em SQL. `services/draftService.ts`
-continua sendo a única fonte de verdade da lógica (elegibilidade de posição,
-ordem snake, sorteio de candidatos, auto-pick) — o Supabase só guarda e
-sincroniza o `DraftState` que essas funções já produziam, agora compartilhado
-entre todos os participantes em vez de viver isolado em cada navegador.
+Importante: em nenhuma das três fases nenhuma regra do jogo foi duplicada em
+SQL. Todos os `services/*.ts` que já existiam antes desta sprint (Draft,
+Liga, Copa, bônus, simulação de partida) continuam sendo a única fonte de
+verdade da lógica — o Supabase só guarda e sincroniza o estado que essas
+funções já produziam, agora compartilhado entre todos os participantes em
+vez de viver isolado em cada navegador.
 
 ## Por que Supabase e não um backend separado
 
 Confirmando a decisão pedida no briefing: Supabase atende os três requisitos
 (Postgres + tempo real + fácil de publicar na Vercel) sem precisar manter um
 servidor Node/Express à parte. Não há limitação técnica que impeça essa
-escolha para o que esta fase e a próxima precisam.
+escolha para nenhuma das três fases.
 
-## Limitação importante desta entrega
+## Limitações importantes desta entrega
 
 Não tenho acesso de rede a `supabase.co` neste ambiente, então não consegui
 provisionar um projeto real nem rodar as migrations/testar a sincronização ao
-vivo — nem na Fase 1, nem nesta. O SQL e o código foram escritos com cuidado
+vivo em nenhuma das três fases. O SQL e o código foram escritos com cuidado
 seguindo a documentação oficial do Supabase, e revisei manualmente as
-políticas de RLS mais de uma vez em busca de erros sutis (encontrei e corrigi
-dois: uma política de UPDATE bloqueando indevidamente a transferência de
-administrador na Fase 1, e um GRANT faltando na função de gerar código de
-sala). Mesmo assim, **teste num projeto real antes de considerar essa fase
-100% validada** — em especial, abra o Draft em duas abas anônimas diferentes
-e confirme que uma escolha feita em uma aba aparece instantaneamente na
-outra, e que atualizar a página no meio do Draft reconecta corretamente.
+políticas de RLS e a lógica de concorrência mais de uma vez em busca de erros
+sutis — encontrei e corrigi vários ao longo do caminho (uma política de
+UPDATE bloqueando a transferência de administrador na Fase 1, um GRANT
+faltando na Fase 1, uma referência quebrada a uma variável removida na Fase
+3, e uma corrida não tratada na confirmação de presença da Pré-Partida).
+Mesmo assim, **teste num projeto real antes de considerar isso pronto**:
+
+- Abra o Draft em duas abas anônimas e confirme que uma escolha numa aba
+  aparece instantaneamente na outra.
+- Numa sala com 2 jogadores humanos, chegue à Pré-Partida em ambas as abas e
+  confirme presença em momentos diferentes — o contador "(1/2)" deve
+  atualizar sozinho, e a partida deve começar automaticamente pros dois ao
+  mesmo tempo, com o mesmo placar.
+- Teste "Nova Liga" com 2+ jogadores na sala.
+
+Também vale registrar: como explicado acima, as partidas não são transmitidas
+evento a evento em tempo real — são calculadas uma vez no servidor e cada
+cliente narra o mesmo resultado localmente. Isso atende ao pedido de "todos
+os jogadores envolvidos recebem exatamente o mesmo resultado", mas não é um
+motor de partida ao vivo de verdade.

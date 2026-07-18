@@ -30,6 +30,9 @@ export interface Match {
   stats: MatchStatLine;
   manOfTheMatch: string;
   isUserMatch: boolean;
+  /** Bônus usado por cada lado nesta partida — preenchido pelo servidor ao simular a rodada (Fase 3 do multiplayer) */
+  homeBoost?: string;
+  awayBoost?: string;
 }
 
 export interface StandingRow {

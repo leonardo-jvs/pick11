@@ -5,13 +5,9 @@ import { useRouter } from "next/navigation";
 import { Screen } from "@/components/layout/Screen";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
-import { getSquadForParticipant, assignReservesToHumans, getDraftFillerNames } from "@/services/draftService";
-import { generateBotSquads, generateSchedule } from "@/services/leagueService";
-import { determineCupTier, initCupState } from "@/services/cupService";
-import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
-import { createFillerNameGuard } from "@/mocks/syntheticPlayers";
-import { generateId } from "@/lib/delay";
-import { Team } from "@/types/team";
+import { startCompetitionOnServer } from "@/services/competitionSyncService";
+import { useRoomRealtime } from "@/hooks/useRoomRealtime";
+import { toast } from "@/store/toastStore";
 import { cn } from "@/lib/utils";
 
 const LEAGUE_STEPS = [
@@ -37,89 +33,60 @@ export default function GeneratingLeaguePage() {
   const room = useSessionStore((s) => s.room);
   const draftState = useSessionStore((s) => s.draftState);
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
-  const setTeams = useSessionStore((s) => s.setTeams);
-  const setSchedule = useSessionStore((s) => s.setSchedule);
-  const setCurrentRound = useSessionStore((s) => s.setCurrentRound);
-  const setCupState = useSessionStore((s) => s.setCupState);
 
   const isCup = room?.gameMode === "cup";
   const STEPS = isCup ? CUP_STEPS : LEAGUE_STEPS;
+  const isHost = !!room && room.hostId === selfParticipantId;
 
   const [stepIndex, setStepIndex] = useState(0);
   const startedRef = useRef(false);
+  const cancelledRef = useRef(false);
+
+  // Se o usuário sair desta tela no meio da geração, interrompe a cadeia
+  // antes do próximo passo — nunca navega depois que o componente já foi
+  // desmontado.
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
+
+  // Sincroniza a sala — os participantes que não são host esperam
+  // `room.status` mudar (o host grava isso ao terminar de gerar a competição).
+  useRoomRealtime(room?.id ?? null);
 
   useEffect(() => {
-    if (!room || !draftState || startedRef.current) return;
+    if (!room || startedRef.current) return;
+
+    if (room.status === "in_league" || room.status === "in_cup") {
+      startedRef.current = true;
+      router.push(ROUTES.preMatch(room.id, 1));
+      return;
+    }
+
+    if (!isHost || !draftState) return;
     startedRef.current = true;
 
     (async () => {
-      const humanParticipants = room.participants.filter((p) => draftState.order.includes(p.id));
-      const clubNames = Object.fromEntries(humanParticipants.map((p) => [p.id, p.clubName]));
-
-      // 1. Montando os elencos (titulares já vêm do draft)
-      setStepIndex(0);
-      await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
-
-      // 2. Distribuindo reservas (Copa não usa reservas — elenco de exatamente 11)
-      setStepIndex(1);
-      // Um único Set de nomes compartilhado entre reservas e bots — herda também
-      // os nomes fictícios já usados durante o próprio Draft (rede de segurança
-      // de escassez), garantindo que nenhum jogador repita nome em toda a liga.
-      const usedNames = new Set([...createFillerNameGuard(), ...getDraftFillerNames()]);
-      const { reserves, remainingPool } = isCup
-        ? { reserves: {} as Record<string, ReturnType<typeof getSquadForParticipant>>, remainingPool: draftState.pool }
-        : assignReservesToHumans(draftState.pool, draftState.order, clubNames, usedNames);
-      const humanTeams: Team[] = humanParticipants.map((participant) => {
-        const starters = getSquadForParticipant(draftState, participant.id);
-        const participantReserves = isCup ? [] : reserves[participant.id] ?? [];
-        const squad = [...starters, ...participantReserves];
-        return {
-          id: generateId("team"),
-          ownerId: participant.id,
-          ownerName: participant.name,
-          clubName: participant.clubName,
-          isHuman: true,
-          tactics: participant.tactics,
-          starters,
-          reserves: participantReserves,
-          squad,
-          overall: computeTeamOverall(squad, participant.tactics),
-          compatibilityStars: computeTeamCompatibilityStars(squad, participant.tactics),
-          physical: 100,
-        };
-      });
-
-      // Copa pode ter menos de 20 equipes no total (8/12/16/20, conforme a
-      // quantidade de humanos) — Liga continua exatamente com 20, como sempre.
-      const targetTotalTeams = isCup ? determineCupTier(humanTeams.length).totalTeams : undefined;
-      const botTeams = await generateBotSquads(remainingPool, humanTeams.length, usedNames, targetTotalTeams, !isCup);
-      await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
-
-      // 3. Calculando compatibilidades (overall final de cada time já aplicado acima)
-      setStepIndex(2);
-      const allTeams = [...humanTeams, ...botTeams];
-      await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
-
-      // 4. Gerando calendário (Liga) ou sorteando os grupos (Copa)
-      setStepIndex(3);
-      if (isCup) {
-        const cupState = initCupState(allTeams.map((t) => t.id), humanTeams.length);
-        setCupState(cupState);
-      } else {
-        const schedule = generateSchedule(allTeams.map((t) => t.id));
-        setSchedule(schedule);
+      for (let i = 0; i < STEPS.length - 1; i++) {
+        setStepIndex(i);
+        await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
+        if (cancelledRef.current) return;
       }
-      await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
+      setStepIndex(STEPS.length - 1);
 
-      // 5. Preparando estádio
-      setStepIndex(4);
-      setTeams(allTeams);
-      setCurrentRound(1);
-      await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
-
-      router.push(ROUTES.preMatch(room.id, 1));
+      try {
+        await startCompetitionOnServer(room, draftState);
+        await new Promise((r) => setTimeout(r, STEP_DURATION_MS));
+        if (cancelledRef.current) return;
+        router.push(ROUTES.preMatch(room.id, 1));
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível gerar a competição.");
+        startedRef.current = false;
+      }
     })();
-  }, [room, draftState, selfParticipantId, isCup, setTeams, setSchedule, setCupState, setCurrentRound, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.status, isHost, draftState]);
 
   const progress = ((stepIndex + 1) / STEPS.length) * 100;
 

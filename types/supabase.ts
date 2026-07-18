@@ -40,3 +40,17 @@ export interface DraftStateRow {
   turn_deadline: string | null;
   updated_at: string;
 }
+
+export interface CompetitionStateRow {
+  room_id: string;
+  teams: unknown; // Team[]
+  schedule: unknown | null; // {round,homeId,awayId}[] — Liga
+  cup_state: unknown | null; // CupState — Copa
+  matches: unknown; // Match[]
+  current_round: number;
+  phase: "pre_match" | "finished";
+  round_readiness: Record<string, { ready: boolean; boost: string }>;
+  round_deadline: string | null;
+  version: number;
+  updated_at: string;
+}

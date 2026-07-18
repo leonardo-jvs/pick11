@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { Zap, Shield, BedDouble, Check, Lock, GitBranch } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +12,11 @@ import { SELECTABLE_BOOSTS, BOOST_USES, BOOST_LABELS, BOOST_POSITION_TARGETS, BO
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings } from "@/services/leagueService";
 import { getCurrentFixtureForTeam, getPhaseLabel, computeGroupStandings } from "@/services/cupService";
+import { submitReadiness, simulateRoundOnServer, getHumanTeamIdsForRound, fetchCompetitionState, CompetitionSnapshot } from "@/services/competitionSyncService";
+import { fetchRoom } from "@/services/roomService";
+import { ensureAnonymousSession } from "@/lib/supabase/auth";
+import { useCompetitionRealtime } from "@/hooks/useCompetitionRealtime";
+import { toast } from "@/store/toastStore";
 import { Boost } from "@/types/team";
 import { Position } from "@/types/player";
 import { cn, getPhysicalColorClass } from "@/lib/utils";
@@ -35,22 +40,106 @@ const BOOST_DESCRIPTION: Record<Boost, string> = {
 
 export default function PreMatchPage() {
   const router = useRouter();
+  const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
+  const setRoom = useSessionStore((s) => s.setRoom);
+  const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const teams = useSessionStore((s) => s.teams);
   const schedule = useSessionStore((s) => s.schedule);
   const matches = useSessionStore((s) => s.matches);
   const currentRound = useSessionStore((s) => s.currentRound);
   const cupState = useSessionStore((s) => s.cupState);
+  const roundReadiness = useSessionStore((s) => s.roundReadiness);
+  const competitionVersion = useSessionStore((s) => s.competitionVersion);
+  const competitionDeadline = useSessionStore((s) => s.competitionDeadline);
   const boostUsage = useSessionStore((s) => s.boostUsage);
-  const setPendingBoost = useSessionStore((s) => s.setPendingBoost);
   const recordBoostUse = useSessionStore((s) => s.recordBoostUse);
   const userTeam = useSessionStore((s) => s.userTeam());
 
   const isCup = room?.gameMode === "cup";
 
-  // Uma vez escolhido, o bônus trava — nenhuma troca depois disso (item 5 da Sprint 6)
   const [lockedBoost, setLockedBoost] = useState<Boost | null>(null);
   const [starting, setStarting] = useState(false);
+  const [reconnecting, setReconnecting] = useState(true);
+
+  // Reconexão: se a store estiver vazia (F5 no meio da Liga/Copa), busca a
+  // sala e o estado da competição direto do Supabase.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await ensureAnonymousSession();
+        let currentRoom = room;
+        if (!currentRoom || currentRoom.id !== params.roomId) {
+          const freshRoom = await fetchRoom(params.roomId);
+          if (cancelled) return;
+          if (!freshRoom) {
+            toast.urgent("Essa sala não existe mais.");
+            router.push(ROUTES.roomHub);
+            return;
+          }
+          currentRoom = freshRoom;
+          setRoom(freshRoom);
+          setSelfParticipantId(user.id);
+        }
+        // O useCompetitionRealtime abaixo já busca e mantém o resto sincronizado.
+        await fetchCompetitionState(currentRoom.id);
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar.");
+      } finally {
+        if (!cancelled) setReconnecting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.roomId]);
+
+  useCompetitionRealtime(room?.id ?? null);
+
+  // Detecta quando a MINHA partida da rodada atual foi simulada (mesmo que eu
+  // não tenha clicado em "pronto" — o prazo pode ter vencido) comparando
+  // quantas partidas do meu time existiam quando entrei nesta tela contra
+  // quantas existem agora. Robusto contra qualquer corrida de tempo, porque
+  // não depende de comparar números de rodada — só de "minha próxima partida
+  // apareceu no histórico".
+  const myMatchCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!userTeam) return;
+    const myMatches = matches.filter((m) => m.homeTeamId === userTeam.id || m.awayTeamId === userTeam.id);
+    if (myMatchCountRef.current === null) {
+      myMatchCountRef.current = myMatches.length;
+      return;
+    }
+    if (myMatches.length > myMatchCountRef.current && room) {
+      // Pega a rodada da partida que acabou de ser disputada — não a
+      // currentRound da store, que a esta altura já pode ter avançado.
+      const justPlayedRound = myMatches[myMatches.length - 1].round;
+      router.push(ROUTES.simulation(room.id, justPlayedRound));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches, userTeam?.id]);
+
+  const timerSeconds = useMemo(() => {
+    if (!competitionDeadline) return PRE_MATCH_CONFIG.TIMER_SECONDS;
+    return Math.max(0, Math.round((new Date(competitionDeadline).getTime() - Date.now()) / 1000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRound, cupState?.phase, cupState?.currentGroupRound, competitionDeadline]);
+
+  // Reseta o bônus travado sempre que uma nova rodada/fase começa
+  useEffect(() => {
+    setLockedBoost(null);
+    setStarting(false);
+  }, [currentRound, cupState?.phase, cupState?.currentGroupRound]);
+
+  if (reconnecting) {
+    return (
+      <Screen center>
+        <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+      </Screen>
+    );
+  }
 
   if (!room || !userTeam || teams.length === 0) {
     return (
@@ -96,8 +185,12 @@ export default function PreMatchPage() {
     : (BOOST_POSITION_TARGETS[activeBoost] as Position[] | undefined);
   const boostDelta = isPouparElenco ? -BOOST_OVERALL_BONUS : BOOST_OVERALL_BONUS;
 
+  const iAmReady = !!roundReadiness[userTeam.id]?.ready;
+  const opponentReady = !!(opponent && roundReadiness[opponent.id]?.ready);
+  const readyCount = (iAmReady ? 1 : 0) + (opponentReady ? 1 : 0);
+
   function isBoostDisabled(boost: Boost) {
-    if (lockedBoost !== null) return true; // travado após a primeira escolha
+    if (lockedBoost !== null || iAmReady) return true;
     const limit = BOOST_USES[boost];
     if (limit === null) return false;
     return (boostUsage[boost] ?? 0) >= limit;
@@ -110,24 +203,46 @@ export default function PreMatchPage() {
     return `${Math.max(0, limit - used)}/${limit} usos`;
   }
 
-  // Clique aplica o bônus imediatamente — sem confirmação, sem poder trocar depois
   function handleSelectBoost(boost: Boost) {
-    if (lockedBoost !== null) return;
+    if (lockedBoost !== null || iAmReady) return;
     setLockedBoost(boost);
   }
 
-  function handleStart() {
-    if (starting || !room) return;
+  async function handleStart() {
+    if (starting || iAmReady || !room || !userTeam) return;
     setStarting(true);
-    // Se o tempo esgotar sem escolha, a partida começa normalmente sem bônus — não existe opção "Nenhum" pra clicar
     const boost = lockedBoost ?? "Nenhum";
     if (boost !== "Nenhum") recordBoostUse(boost);
-    setPendingBoost(boost);
-    router.push(ROUTES.simulation(room.id, currentRound));
-  }
 
-  function handleTimeout() {
-    handleStart();
+    let snapshot: CompetitionSnapshot = {
+      teams,
+      schedule: schedule.length > 0 ? schedule : null,
+      cupState,
+      matches,
+      currentRound,
+      phase: "pre_match",
+      roundReadiness,
+      roundDeadline: competitionDeadline,
+      version: competitionVersion,
+    };
+
+    // Se outro jogador confirmou no mesmo instante, a escrita otimista perde
+    // a corrida — busca o estado mais fresco e tenta de novo, em vez de
+    // deixar o clique do usuário silenciosamente não valer nada.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const accepted = await submitReadiness(room.id, snapshot, userTeam.id, boost);
+        if (accepted) return; // o Realtime atualiza iAmReady sozinho a partir daqui
+        const fresh = await fetchCompetitionState(room.id);
+        if (!fresh) break;
+        if (fresh.roundReadiness[userTeam.id]?.ready) return; // já confirmado (ex: outra aba)
+        snapshot = fresh;
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível confirmar. Tente de novo.");
+        break;
+      }
+    }
+    setStarting(false);
   }
 
   return (
@@ -150,7 +265,7 @@ export default function PreMatchPage() {
               </button>
             )}
           </div>
-          <Timer seconds={PRE_MATCH_CONFIG.TIMER_SECONDS} resetKey={currentRound} onComplete={handleTimeout} size={64} />
+          <Timer seconds={timerSeconds} resetKey={`${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`} onComplete={() => {}} size={64} />
         </div>
 
         <div className="mb-4 grid grid-cols-4 gap-2">
@@ -189,7 +304,7 @@ export default function PreMatchPage() {
 
         <div className="mb-1.5 flex items-center gap-1.5">
           <p className="font-sans text-xs text-text-tertiary">Escolha um bônus (opcional)</p>
-          {lockedBoost !== null && <Lock size={11} className="text-text-tertiary" />}
+          {(lockedBoost !== null || iAmReady) && <Lock size={11} className="text-text-tertiary" />}
         </div>
         <div className="mb-4 space-y-2">
           {SELECTABLE_BOOSTS.map((boost) => {
@@ -205,8 +320,7 @@ export default function PreMatchPage() {
                 className={cn(
                   "flex w-full items-start gap-3 rounded-card border px-3 py-2.5 text-left transition-colors",
                   selected ? "border-gold bg-gold/10" : "border-border-subtle bg-surface hover:border-border-strong",
-                  disabled && !selected && "cursor-not-allowed opacity-40",
-                  lockedBoost !== null && !selected && "cursor-not-allowed"
+                  disabled && !selected && "cursor-not-allowed opacity-40"
                 )}
               >
                 <span className={cn("mt-0.5", selected ? "text-gold" : "text-text-tertiary")}>{BOOST_ICON[boost]}</span>
@@ -223,10 +337,66 @@ export default function PreMatchPage() {
           })}
         </div>
 
-        <Button fullWidth size="lg" isLoading={starting} onClick={handleStart}>
-          Iniciar partida
+        <Button fullWidth size="lg" isLoading={starting && !iAmReady} disabled={iAmReady} onClick={handleStart}>
+          {iAmReady ? "Aguardando..." : opponent?.isHuman ? `Iniciar Partida (${readyCount}/2)` : "Iniciar Partida"}
         </Button>
+
+        <RoundAdvancer roomId={room.id} />
       </div>
     </Screen>
   );
+}
+
+/**
+ * Componente invisível: qualquer participante conectado observa a prontidão
+ * da rodada e tenta disparar a simulação quando todo mundo confirmou (ou o
+ * prazo vence) — não só o host, pra rodada nunca travar se o host cair da
+ * conexão no meio. A trava de concorrência otimista garante que, mesmo que
+ * vários clientes tentem ao mesmo tempo, a rodada só é simulada uma única vez.
+ */
+function RoundAdvancer({ roomId }: { roomId: string }) {
+  const teams = useSessionStore((s) => s.teams);
+  const schedule = useSessionStore((s) => s.schedule);
+  const cupState = useSessionStore((s) => s.cupState);
+  const matches = useSessionStore((s) => s.matches);
+  const currentRound = useSessionStore((s) => s.currentRound);
+  const roundReadiness = useSessionStore((s) => s.roundReadiness);
+  const competitionVersion = useSessionStore((s) => s.competitionVersion);
+  const competitionDeadline = useSessionStore((s) => s.competitionDeadline);
+  const triggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (teams.length === 0) return;
+
+    const snapshot = {
+      teams,
+      schedule: schedule.length > 0 ? schedule : null,
+      cupState,
+      matches,
+      currentRound,
+      phase: "pre_match" as const,
+      roundReadiness,
+      roundDeadline: competitionDeadline,
+      version: competitionVersion,
+    };
+    const humanIds = getHumanTeamIdsForRound(snapshot);
+    const everyoneReady = humanIds.length > 0 && humanIds.every((id) => roundReadiness[id]?.ready);
+    const deadlinePassed = competitionDeadline ? new Date(competitionDeadline).getTime() <= Date.now() : false;
+
+    if (!everyoneReady && !deadlinePassed) return;
+    if (triggeredRef.current) return;
+    triggeredRef.current = true;
+
+    simulateRoundOnServer(roomId, snapshot)
+      .catch(() => {
+        // Falha pontual — outro cliente (ou o próprio host, num novo ciclo do
+        // efeito) tenta de novo; a trava otimista garante que nunca duplica.
+      })
+      .finally(() => {
+        triggeredRef.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teams, schedule, cupState, matches, currentRound, roundReadiness, competitionVersion, competitionDeadline]);
+
+  return null;
 }

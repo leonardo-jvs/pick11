@@ -19,6 +19,12 @@ interface SessionState {
   schedule: { round: number; homeId: string; awayId: string }[];
   matches: Match[];
   currentRound: number;
+  /** Trava de concorrência otimista da competição sincronizada (Fase 3) */
+  competitionVersion: number;
+  /** Prazo da rodada atual (ISO), vindo do servidor */
+  competitionDeadline: string | null;
+  /** Quem já confirmou presença (e com qual bônus) na rodada atual */
+  roundReadiness: Record<string, { ready: boolean; boost: string }>;
   /** Boost escolhido na Pré-Partida para a próxima simulação (consumido e resetado após a partida) */
   pendingBoost: Boost;
   /** Quantas vezes cada boost já foi usado nesta temporada (limites em BOOST_USES) */
@@ -38,6 +44,8 @@ interface SessionState {
   updateTeam: (teamId: string, patch: Partial<Team>) => void;
   setSchedule: (schedule: { round: number; homeId: string; awayId: string }[]) => void;
   addMatches: (matches: Match[]) => void;
+  setMatches: (matches: Match[]) => void;
+  setCompetitionSync: (version: number, deadline: string | null, roundReadiness: Record<string, { ready: boolean; boost: string }>) => void;
   setCurrentRound: (round: number) => void;
   setPendingBoost: (boost: Boost) => void;
   recordBoostUse: (boost: Boost) => void;
@@ -58,6 +66,9 @@ const initialState = {
   schedule: [],
   matches: [],
   currentRound: 1,
+  competitionVersion: 0,
+  competitionDeadline: null as string | null,
+  roundReadiness: {} as Record<string, { ready: boolean; boost: string }>,
   pendingBoost: "Nenhum" as Boost,
   boostUsage: {},
   gameMode: "league" as const,
@@ -94,6 +105,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     })),
   setSchedule: (schedule) => set({ schedule }),
   addMatches: (matches) => set((state) => ({ matches: [...state.matches, ...matches] })),
+  setMatches: (matches) => set({ matches }),
+  setCompetitionSync: (competitionVersion, competitionDeadline, roundReadiness) => set({ competitionVersion, competitionDeadline, roundReadiness }),
   setCurrentRound: (round) => set({ currentRound: round }),
   setPendingBoost: (boost) => set({ pendingBoost: boost }),
   recordBoostUse: (boost) =>

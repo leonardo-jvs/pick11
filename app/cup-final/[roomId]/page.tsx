@@ -1,22 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Trophy, Skull } from "lucide-react";
+import { Trophy, Skull, RotateCcw } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { getPhaseLabel } from "@/services/cupService";
+import { resetCompetition } from "@/services/competitionSyncService";
+import { toast } from "@/store/toastStore";
 import { CupPhase } from "@/types/cup";
 
 export default function CupFinalPage() {
   const router = useRouter();
   const room = useSessionStore((s) => s.room);
   const cupState = useSessionStore((s) => s.cupState);
+  const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const userTeam = useSessionStore((s) => s.userTeam());
   const teams = useSessionStore((s) => s.teams);
   const reset = useSessionStore((s) => s.reset);
+  const [resetting, setResetting] = useState(false);
+
+  const isHost = !!room && room.hostId === selfParticipantId;
+  const isSolo = !!room && room.maxPlayers === 1;
 
   if (!room || !userTeam || !cupState) {
     return (
@@ -24,6 +32,18 @@ export default function CupFinalPage() {
         <p className="font-sans text-sm text-text-secondary">Nenhuma Copa concluída ainda.</p>
       </Screen>
     );
+  }
+
+  async function handleNewLeague() {
+    if (!room) return;
+    setResetting(true);
+    try {
+      await resetCompetition(room.id);
+      router.push(ROUTES.lobby(room.id));
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível reiniciar a competição.");
+      setResetting(false);
+    }
   }
 
   const userMatches = cupState.knockout.filter((m) => m.homeId === userTeam.id || m.awayId === userTeam.id);
@@ -76,6 +96,11 @@ export default function CupFinalPage() {
         )}
 
         <div className="mt-8 space-y-2">
+          {!isSolo && isHost && (
+            <Button fullWidth size="lg" variant="secondary" icon={<RotateCcw size={16} />} isLoading={resetting} onClick={handleNewLeague}>
+              Nova Copa (mesma sala)
+            </Button>
+          )}
           <Button fullWidth size="lg" onClick={playAgain}>
             Jogar novamente
           </Button>

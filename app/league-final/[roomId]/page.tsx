@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Trophy, Medal, ChevronRight } from "lucide-react";
+import { Trophy, Medal, ChevronRight, RotateCcw } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings, computeTopScorers, computeBestDefenses } from "@/services/leagueService";
+import { resetCompetition } from "@/services/competitionSyncService";
+import { toast } from "@/store/toastStore";
 import { cn } from "@/lib/utils";
 
 export default function LeagueFinalPage() {
@@ -15,8 +18,13 @@ export default function LeagueFinalPage() {
   const room = useSessionStore((s) => s.room);
   const teams = useSessionStore((s) => s.teams);
   const matches = useSessionStore((s) => s.matches);
+  const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const userTeam = useSessionStore((s) => s.userTeam());
   const reset = useSessionStore((s) => s.reset);
+  const [resetting, setResetting] = useState(false);
+
+  const isHost = !!room && room.hostId === selfParticipantId;
+  const isSolo = !!room && room.maxPlayers === 1;
 
   if (!room || !userTeam) {
     return (
@@ -24,6 +32,18 @@ export default function LeagueFinalPage() {
         <p className="font-sans text-sm text-text-secondary">Nenhuma liga concluída ainda.</p>
       </Screen>
     );
+  }
+
+  async function handleNewLeague() {
+    if (!room) return;
+    setResetting(true);
+    try {
+      await resetCompetition(room.id);
+      router.push(ROUTES.lobby(room.id));
+    } catch (e) {
+      toast.urgent(e instanceof Error ? e.message : "Não foi possível reiniciar a competição.");
+      setResetting(false);
+    }
   }
 
   const standings = computeStandings(teams, matches, userTeam.id);
@@ -109,6 +129,11 @@ export default function LeagueFinalPage() {
         </button>
 
         <div className="mt-6 space-y-2">
+          {!isSolo && isHost && (
+            <Button fullWidth size="lg" variant="secondary" icon={<RotateCcw size={16} />} isLoading={resetting} onClick={handleNewLeague}>
+              Nova Liga (mesma sala)
+            </Button>
+          )}
           <Button fullWidth size="lg" onClick={playAgain}>
             Jogar novamente
           </Button>

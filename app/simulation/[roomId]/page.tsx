@@ -1,22 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { Screen } from "@/components/layout/Screen";
 import { Modal } from "@/components/ui/Modal";
 import { StandingsTable } from "@/components/features/league/StandingsTable";
 import { ROUTES } from "@/constants/routes";
 import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
-import { simulateMatch, computeStandings } from "@/services/leagueService";
-import { determineCupTier, getQualifiedTeamIds, buildInitialBracket, advancePhaseIfComplete, resolvePenalties, computeGroupStandings } from "@/services/cupService";
-import { applyBoost } from "@/services/matchPrepService";
-import { randomBetween } from "@/lib/delay";
-import { Team, Boost } from "@/types/team";
+import { computeStandings } from "@/services/leagueService";
+import { computeGroupStandings } from "@/services/cupService";
+import { fetchCompetitionState } from "@/services/competitionSyncService";
+import { fetchRoom } from "@/services/roomService";
+import { ensureAnonymousSession } from "@/lib/supabase/auth";
+import { useCompetitionRealtime } from "@/hooks/useCompetitionRealtime";
+import { toast } from "@/store/toastStore";
+import { Boost } from "@/types/team";
 import { Match } from "@/types/match";
 import { cn } from "@/lib/utils";
-
-const HOME_ADVANTAGE = 1;
 
 interface Beat {
   minute: string;
@@ -77,167 +78,84 @@ function buildBeats(match: Match, penalties?: { home: number; away: number }): B
 
 export default function SimulationPage() {
   const router = useRouter();
+  const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
+  const setRoom = useSessionStore((s) => s.setRoom);
+  const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const teams = useSessionStore((s) => s.teams);
-  const schedule = useSessionStore((s) => s.schedule);
-  const currentRound = useSessionStore((s) => s.currentRound);
-  const cupState = useSessionStore((s) => s.cupState);
-  const setCupState = useSessionStore((s) => s.setCupState);
-  const pendingBoost = useSessionStore((s) => s.pendingBoost);
-  const setPendingBoost = useSessionStore((s) => s.setPendingBoost);
-  const addMatches = useSessionStore((s) => s.addMatches);
   const matches = useSessionStore((s) => s.matches);
-  const updateTeam = useSessionStore((s) => s.updateTeam);
-  const setCurrentRound = useSessionStore((s) => s.setCurrentRound);
+  const cupState = useSessionStore((s) => s.cupState);
   const userTeam = useSessionStore((s) => s.userTeam());
 
   const isCup = room?.gameMode === "cup";
 
-  const [beats, setBeats] = useState<Beat[]>([]);
   const [visibleCount, setVisibleCount] = useState(0);
   const [phase, setPhase] = useState<"narration" | "stats">("narration");
-  const [userMatch, setUserMatch] = useState<Match | null>(null);
-  const [userBoost, setUserBoost] = useState<Boost>("Nenhum");
-  const [opponentBoost, setOpponentBoost] = useState<Boost>("Nenhum");
-  const [penaltyResult, setPenaltyResult] = useState<{ home: number; away: number } | null>(null);
   const [showStandings, setShowStandings] = useState(false);
-  const [cupOutcome, setCupOutcome] = useState<"none" | "advance" | "champion" | "eliminated">("none");
-  const startedRef = useRef(false);
+  const [reconnecting, setReconnecting] = useState(true);
+  const navigatedRef = useRef(false);
 
-  // 1. Computa a rodada/fase inteira assim que a tela monta
   useEffect(() => {
-    if (!room || !userTeam || startedRef.current) return;
-    if (isCup && !cupState) return;
-    startedRef.current = true;
-
-    function playFixture(round: number, home: Team, away: Team, isUserMatch: boolean, isKnockout: boolean) {
-      const isUserHome = home.id === userTeam!.id;
-      const isUserAway = away.id === userTeam!.id;
-      const homeBoost: Boost = isUserHome ? pendingBoost : "Nenhum";
-      const awayBoost: Boost = isUserAway ? pendingBoost : "Nenhum";
-      const homeEff = applyBoost(home, homeBoost);
-      const awayEff = applyBoost(away, awayBoost);
-
-      const effectiveHome: Team = { ...home, squad: homeEff.squad, overall: homeEff.overall + HOME_ADVANTAGE };
-      const effectiveAway: Team = { ...away, squad: awayEff.squad, overall: awayEff.overall };
-
-      const match = simulateMatch(round, effectiveHome, effectiveAway, isUserMatch);
-      let penalties: { home: number; away: number } | undefined;
-
-      if (isKnockout && match.homeScore === match.awayScore) {
-        const result = resolvePenalties(home, away);
-        penalties = { home: result.homeGoals, away: result.awayGoals };
-      }
-
-      const homePhysicalAfter = homeEff.restoresFullPhysicalAfterMatch ? 100 : Math.max(45, homeEff.physical - randomBetween(3, 8));
-      const awayPhysicalAfter = awayEff.restoresFullPhysicalAfterMatch ? 100 : Math.max(45, awayEff.physical - randomBetween(3, 8));
-
-      if (isUserMatch) {
-        setUserMatch(match);
-        setUserBoost(isUserHome ? homeBoost : awayBoost);
-        setOpponentBoost(isUserHome ? awayBoost : homeBoost);
-        setPenaltyResult(penalties ?? null);
-        setBeats(buildBeats(match, penalties));
-      }
-
-      return { match, penalties, homePhysicalAfter, awayPhysicalAfter };
-    }
-
-    const results: Match[] = [];
-    const physicalPatches: { teamId: string; physical: number }[] = [];
-
-    if (isCup && cupState) {
-      if (cupState.phase === "groups") {
-        const fixtures = cupState.groupFixtures.filter((f) => f.round === cupState.currentGroupRound);
-        for (const fixture of fixtures) {
-          const home = teams.find((t) => t.id === fixture.homeId);
-          const away = teams.find((t) => t.id === fixture.awayId);
-          if (!home || !away) continue;
-          const isUserMatch = home.id === userTeam.id || away.id === userTeam.id;
-          const { match, homePhysicalAfter, awayPhysicalAfter } = playFixture(cupState.currentGroupRound, home, away, isUserMatch, false);
-          results.push(match);
-          physicalPatches.push({ teamId: home.id, physical: homePhysicalAfter });
-          physicalPatches.push({ teamId: away.id, physical: awayPhysicalAfter });
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await ensureAnonymousSession();
+        let currentRoom = room;
+        if (!currentRoom || currentRoom.id !== params.roomId) {
+          const freshRoom = await fetchRoom(params.roomId);
+          if (cancelled) return;
+          if (!freshRoom) {
+            toast.urgent("Essa sala não existe mais.");
+            router.push(ROUTES.roomHub);
+            return;
+          }
+          currentRoom = freshRoom;
+          setRoom(freshRoom);
+          setSelfParticipantId(user.id);
         }
-
-        addMatches(results);
-        physicalPatches.forEach((p) => updateTeam(p.teamId, { physical: p.physical }));
-        setPendingBoost("Nenhum");
-
-        if (cupState.currentGroupRound < 3) {
-          setCupState({ ...cupState, currentGroupRound: cupState.currentGroupRound + 1 });
-          setCupOutcome("advance");
-        } else {
-          const humanCount = teams.filter((t) => t.isHuman).length;
-          const tier = determineCupTier(humanCount);
-          const allMatches = [...matches, ...results];
-          const qualifiers = getQualifiedTeamIds(cupState.groups, teams, allMatches, tier);
-          const knockout = buildInitialBracket(qualifiers, tier.firstKnockoutPhase);
-          setCupState({ ...cupState, phase: tier.firstKnockoutPhase, knockout });
-          setCupOutcome(qualifiers.includes(userTeam.id) ? "advance" : "eliminated");
-        }
-      } else if (cupState.phase !== "finished") {
-        const currentPhase = cupState.phase;
-        const pendingMatches = cupState.knockout.filter((m) => m.phase === currentPhase && !m.winnerId);
-        const updatedKnockout = [...cupState.knockout];
-
-        for (const pending of pendingMatches) {
-          const home = teams.find((t) => t.id === pending.homeId);
-          const away = teams.find((t) => t.id === pending.awayId);
-          if (!home || !away) continue;
-          const isUserMatch = home.id === userTeam.id || away.id === userTeam.id;
-          const { match, penalties, homePhysicalAfter, awayPhysicalAfter } = playFixture(900, home, away, isUserMatch, true);
-          results.push(match);
-          physicalPatches.push({ teamId: home.id, physical: homePhysicalAfter });
-          physicalPatches.push({ teamId: away.id, physical: awayPhysicalAfter });
-
-          const winnerId = penalties ? (penalties.home > penalties.away ? home.id : away.id) : match.homeScore > match.awayScore ? home.id : away.id;
-          const idx = updatedKnockout.findIndex((m) => m.id === pending.id);
-          updatedKnockout[idx] = {
-            ...pending,
-            matchId: match.id,
-            winnerId,
-            wentToPenalties: !!penalties,
-            penaltyScore: penalties ? [penalties.home, penalties.away] : undefined,
-          };
-        }
-
-        addMatches(results);
-        physicalPatches.forEach((p) => updateTeam(p.teamId, { physical: p.physical }));
-        setPendingBoost("Nenhum");
-
-        const { knockout: finalKnockout, nextPhase } = advancePhaseIfComplete(updatedKnockout, currentPhase);
-        const userMatchThisPhase = updatedKnockout.find(
-          (m) => m.phase === currentPhase && (m.homeId === userTeam.id || m.awayId === userTeam.id)
-        );
-        const userWon = userMatchThisPhase?.winnerId === userTeam.id;
-
-        setCupState({ ...cupState, phase: nextPhase, knockout: finalKnockout });
-
-        if (!userWon) setCupOutcome("eliminated");
-        else if (nextPhase === "finished") setCupOutcome("champion");
-        else setCupOutcome("advance");
+        await fetchCompetitionState(currentRoom.id);
+      } catch (e) {
+        toast.urgent(e instanceof Error ? e.message : "Não foi possível conectar.");
+      } finally {
+        if (!cancelled) setReconnecting(false);
       }
-    } else {
-      const fixtures = schedule.filter((f) => f.round === currentRound);
-      for (const fixture of fixtures) {
-        const home = teams.find((t) => t.id === fixture.homeId);
-        const away = teams.find((t) => t.id === fixture.awayId);
-        if (!home || !away) continue;
-        const isUserMatch = home.id === userTeam.id || away.id === userTeam.id;
-        const { match, homePhysicalAfter, awayPhysicalAfter } = playFixture(currentRound, home, away, isUserMatch, false);
-        results.push(match);
-        physicalPatches.push({ teamId: home.id, physical: homePhysicalAfter });
-        physicalPatches.push({ teamId: away.id, physical: awayPhysicalAfter });
-      }
-      addMatches(results);
-      physicalPatches.forEach((p) => updateTeam(p.teamId, { physical: p.physical }));
-      setPendingBoost("Nenhum");
-    }
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room, userTeam, cupState !== null]);
+  }, [params.roomId]);
 
-  // 2. Narra os acontecimentos progressivamente durante ~5s (timer invisível pro usuário)
+  useCompetitionRealtime(room?.id ?? null);
+
+  // A minha partida é sempre a mais recente do histórico envolvendo meu time
+  // — o resultado já foi calculado e gravado pelo servidor (RoundAdvancer, na
+  // Pré-Partida), aqui só lemos e narramos.
+  const userMatch = useMemo(() => {
+    if (!userTeam) return null;
+    const mine = matches.filter((m) => m.homeTeamId === userTeam.id || m.awayTeamId === userTeam.id);
+    return mine.length > 0 ? mine[mine.length - 1] : null;
+  }, [matches, userTeam?.id]);
+
+  const knockoutEntry = useMemo(() => {
+    if (!cupState || !userMatch) return null;
+    return cupState.knockout.find((k) => k.matchId === userMatch.id) ?? null;
+  }, [cupState, userMatch]);
+
+  const penaltyResult = knockoutEntry?.wentToPenalties && knockoutEntry.penaltyScore
+    ? { home: knockoutEntry.penaltyScore[0], away: knockoutEntry.penaltyScore[1] }
+    : null;
+
+  const cupOutcome: "none" | "advance" | "champion" | "eliminated" = useMemo(() => {
+    if (!isCup || !userTeam) return "none";
+    if (!knockoutEntry) return "advance"; // ainda na fase de grupos, ou fixture de grupo
+    if (knockoutEntry.winnerId !== userTeam.id) return "eliminated";
+    return knockoutEntry.phase === "final" ? "champion" : "advance";
+  }, [isCup, userTeam, knockoutEntry]);
+
+  const beats = useMemo(() => (userMatch ? buildBeats(userMatch, penaltyResult ?? undefined) : []), [userMatch, penaltyResult]);
+
+  // Narra os acontecimentos progressivamente durante ~5s
   useEffect(() => {
     if (beats.length === 0 || phase !== "narration") return;
     if (visibleCount >= beats.length) {
@@ -249,26 +167,35 @@ export default function SimulationPage() {
     return () => clearTimeout(t);
   }, [beats, visibleCount, phase]);
 
-  // 3. Depois das estatísticas, avança sozinho pra próxima etapa (Liga ou Copa)
+  // Depois das estatísticas, navega sozinho pra próxima etapa
   useEffect(() => {
-    if (phase !== "stats" || !room) return;
+    if (phase !== "stats" || !room || !userMatch || navigatedRef.current) return;
     const t = setTimeout(() => {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
       setShowStandings(false);
       if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
           router.push(ROUTES.cupFinal(room.id));
         } else {
-          router.push(ROUTES.preMatch(room.id, currentRound));
+          router.push(ROUTES.preMatch(room.id, 1));
         }
-      } else if (currentRound >= LEAGUE_CONFIG.TOTAL_ROUNDS) {
+      } else if (userMatch.round >= LEAGUE_CONFIG.TOTAL_ROUNDS) {
         router.push(ROUTES.leagueFinal(room.id));
       } else {
-        setCurrentRound(currentRound + 1);
-        router.push(ROUTES.preMatch(room.id, currentRound + 1));
+        router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
       }
     }, LIVE_MATCH_CONFIG.STATS_SECONDS * 1000);
     return () => clearTimeout(t);
-  }, [phase, room, isCup, cupOutcome, currentRound, setCurrentRound, router]);
+  }, [phase, room, isCup, cupOutcome, userMatch, router]);
+
+  if (reconnecting) {
+    return (
+      <Screen center>
+        <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+      </Screen>
+    );
+  }
 
   if (!room || !userTeam) {
     return (
@@ -278,16 +205,29 @@ export default function SimulationPage() {
     );
   }
 
-  const isHome = userMatch?.homeTeamId === userTeam.id;
-  const userScore = userMatch ? (isHome ? userMatch.homeScore : userMatch.awayScore) : 0;
-  const opponentScore = userMatch ? (isHome ? userMatch.awayScore : userMatch.homeScore) : 0;
-  const opponentName = userMatch ? (isHome ? userMatch.awayTeamName : userMatch.homeTeamName) : "—";
+  if (!userMatch) {
+    return (
+      <Screen center>
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-gold" />
+          <p className="font-sans text-sm text-text-secondary">Aguardando o resultado da rodada...</p>
+        </div>
+      </Screen>
+    );
+  }
+
+  const isHome = userMatch.homeTeamId === userTeam.id;
+  const userScore = isHome ? userMatch.homeScore : userMatch.awayScore;
+  const opponentScore = isHome ? userMatch.awayScore : userMatch.homeScore;
+  const opponentName = isHome ? userMatch.awayTeamName : userMatch.homeTeamName;
   const userGroup = isCup && cupState ? cupState.groups.find((g) => g.teamIds.includes(userTeam.id)) ?? null : null;
+  const userBoost = (isHome ? userMatch.homeBoost : userMatch.awayBoost) as Boost | undefined;
+  const opponentBoost = (isHome ? userMatch.awayBoost : userMatch.homeBoost) as Boost | undefined;
 
   return (
     <Screen center>
       <div className="w-full">
-        {phase === "narration" || !userMatch ? (
+        {phase === "narration" ? (
           <div className="flex flex-col items-center">
             <p className="mb-1 font-sans text-xs text-text-tertiary">
               {userTeam.clubName} <span className="text-text-tertiary">x</span> {opponentName}
@@ -329,7 +269,7 @@ export default function SimulationPage() {
               return <p className={cn("mb-1 text-center font-display text-xl tracking-wide", outcomeColor)}>{outcome}</p>;
             })()}
             <p className="mb-4 text-center font-sans text-xs text-text-tertiary">
-              {isCup ? "Copa · Fim de jogo" : `Rodada ${currentRound} · Fim de jogo`}
+              {isCup ? "Copa · Fim de jogo" : `Rodada ${userMatch.round} · Fim de jogo`}
             </p>
 
             <div className="mb-5 flex items-center justify-center gap-4 rounded-card border border-border-subtle bg-surface p-6">
@@ -371,10 +311,10 @@ export default function SimulationPage() {
               <p className="mb-1.5 font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Bônus utilizado</p>
               <p className="font-sans text-sm text-text-secondary">
                 <span className="font-semibold text-text-primary">{userMatch.homeTeamId === userTeam.id ? userTeam.clubName : opponentName}:</span>{" "}
-                {BOOST_LABELS[isHome ? userBoost : opponentBoost]}
+                {BOOST_LABELS[(isHome ? userBoost : opponentBoost) ?? "Nenhum"]}
                 <span className="mx-2 text-text-tertiary">×</span>
                 <span className="font-semibold text-text-primary">{userMatch.awayTeamId === userTeam.id ? userTeam.clubName : opponentName}:</span>{" "}
-                {BOOST_LABELS[isHome ? opponentBoost : userBoost]}
+                {BOOST_LABELS[(isHome ? opponentBoost : userBoost) ?? "Nenhum"]}
               </p>
             </div>
 
