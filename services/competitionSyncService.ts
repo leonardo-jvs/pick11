@@ -62,6 +62,29 @@ function mapRow(row: {
 export async function startCompetitionOnServer(room: Room, draftState: DraftState): Promise<void> {
   const supabase = getSupabaseClient();
   const isCup = room.gameMode === "cup";
+
+  // Idempotência: se a competição já existe (ex: uma tentativa anterior
+  // conseguiu criar o registro mas falhou antes de atualizar o status da
+  // sala, por uma falha de rede pontual), não tenta gerar de novo — isso
+  // faria o insert seguinte falhar por violação de chave única (room_id é
+  // chave primária) e travaria qualquer nova tentativa num loop de erro. Só
+  // garante que o status da sala reflita a competição que já existe.
+  const { data: existing, error: existingError } = await supabase
+    .from("competition_states")
+    .select("room_id")
+    .eq("room_id", room.id)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+
+  if (existing) {
+    const { error: statusError } = await supabase
+      .from("rooms")
+      .update({ status: isCup ? "in_cup" : "in_league" })
+      .eq("id", room.id);
+    if (statusError) throw new Error(statusError.message);
+    return;
+  }
+
   const humanParticipants = room.participants.filter((p) => draftState.order.includes(p.id));
   const clubNames = Object.fromEntries(humanParticipants.map((p) => [p.id, p.clubName]));
 
@@ -109,7 +132,11 @@ export async function startCompetitionOnServer(room: Room, draftState: DraftStat
     round_deadline: new Date(Date.now() + PRE_MATCH_CONFIG.TIMER_SECONDS * 1000).toISOString(),
     version: 0,
   });
-  if (insertError) throw new Error(insertError.message);
+  // Código 23505 = violação de chave única — outro cliente (ou uma tentativa
+  // anterior desta mesma sessão) já criou a competição entre a checagem
+  // acima e este insert. Não é um erro de verdade: a competição existe, é só
+  // seguir em frente normalmente.
+  if (insertError && insertError.code !== "23505") throw new Error(insertError.message);
 
   const { error: statusError } = await supabase
     .from("rooms")
