@@ -87,12 +87,15 @@ export default function DraftPage() {
   const turnParticipant = room?.participants.find((p) => p.id === currentTurn?.participantId) ?? null;
   const selfParticipant = room?.participants.find((p) => p.id === selfParticipantId) ?? null;
   const hideOverall = room?.draftMode === "hidden";
-  // Multiplayer: só quem está com a vez vê e roda o cronômetro — os demais só
-  // acompanham por uma mensagem de espera (nenhum cliente secundário executa
-  // lógica de cronômetro). Singleplayer nunca é afetado: como só existe um
-  // humano no draft solo, toda vez ali já É a vez dele.
   const isSolo = !!room && room.maxPlayers === 1;
-  const showTimer = isSolo || isSelfTurn;
+  // O Timer roda (montado) pra TODOS os clientes, sempre — é isso que mantém
+  // o auto-pick robusto (qualquer cliente pode disparar o troca-de-turno se
+  // precisar, sem depender de um único cliente "autorizado" continuar
+  // conectado). A única diferença é puramente visual: o número/círculo só
+  // aparece pro host — os demais continuam vendo normalmente as mensagens
+  // "Sua vez!"/"{nome} está escolhendo...", só sem nenhum indicador numérico.
+  const isHost = !!room && room.hostId === selfParticipantId;
+  const showTimerNumber = isSolo || isHost;
 
   useEffect(() => {
     setSelectedIds([]);
@@ -296,13 +299,10 @@ export default function DraftPage() {
                     {isSelfTurn ? "Sua vez!" : `${turnParticipant?.name ?? "—"} está escolhendo...`}
                   </span>
                 </p>
-                {showTimer ? (
+                <div className={cn(!showTimerNumber && "sr-only")} aria-hidden={!showTimerNumber}>
                   <Timer seconds={timerSeconds} resetKey={currentTurn.index} onComplete={handleTimeout} size={52} />
-                ) : (
-                  <div className="flex size-[52px] shrink-0 items-center justify-center">
-                    <div className="size-5 animate-spin rounded-full border-2 border-border-strong border-t-teal-bright" />
-                  </div>
-                )}
+                </div>
+                {!showTimerNumber && <div className="size-[52px] shrink-0" />}
               </div>
 
               <div className="mt-1.5 flex gap-1.5 overflow-x-auto">

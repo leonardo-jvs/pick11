@@ -122,7 +122,14 @@ export default function CupFinalPage() {
           <Button fullWidth size="lg" onClick={playAgain}>
             Jogar novamente
           </Button>
-          <Button fullWidth variant="secondary" onClick={() => router.push(ROUTES.menu)}>
+          <Button
+            fullWidth
+            variant="secondary"
+            onClick={() => {
+              reset();
+              router.push(ROUTES.menu);
+            }}
+          >
             Voltar ao menu
           </Button>
         </div>
