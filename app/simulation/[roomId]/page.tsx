@@ -147,11 +147,23 @@ export default function SimulationPage() {
     : null;
 
   const cupOutcome: "none" | "advance" | "champion" | "eliminated" = useMemo(() => {
-    if (!isCup || !userTeam) return "none";
-    if (!knockoutEntry) return "advance"; // ainda na fase de grupos, ou fixture de grupo
-    if (knockoutEntry.winnerId !== userTeam.id) return "eliminated";
-    return knockoutEntry.phase === "final" ? "champion" : "advance";
-  }, [isCup, userTeam, knockoutEntry]);
+    if (!isCup || !userTeam || !cupState) return "none";
+    if (knockoutEntry) {
+      if (knockoutEntry.winnerId !== userTeam.id) return "eliminated";
+      return knockoutEntry.phase === "final" ? "champion" : "advance";
+    }
+    // Sem entrada no mata-mata: ou ainda estamos na fase de grupos (tudo bem,
+    // "advance" está certo — ainda tem jogo pela frente), ou o mata-mata já
+    // começou e o time do usuário simplesmente não se classificou. Sem essa
+    // segunda checagem, um time eliminado na fase de grupos era mandado de
+    // volta pra Pré-Partida pra sempre, e o cliente dele ficava sozinho
+    // simulando o resto do torneio até acabar, só pra então mostrar a
+    // eliminação — daí o "aguarda até o fim da Copa" relatado.
+    if (cupState.phase !== "groups" && !cupState.knockout.some((k) => k.homeId === userTeam.id || k.awayId === userTeam.id)) {
+      return "eliminated";
+    }
+    return "advance";
+  }, [isCup, userTeam, cupState, knockoutEntry]);
 
   const beats = useMemo(() => (userMatch ? buildBeats(userMatch, penaltyResult ?? undefined) : []), [userMatch, penaltyResult]);
 

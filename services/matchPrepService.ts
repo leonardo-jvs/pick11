@@ -1,5 +1,6 @@
 import { Player } from "@/types/player";
 import { Team, Boost } from "@/types/team";
+import { Match } from "@/types/match";
 import { BOOST_POSITION_TARGETS, BOOST_OVERALL_BONUS } from "@/constants/game";
 import { computeTeamOverall } from "@/services/compatibilityService";
 
@@ -39,4 +40,20 @@ export function applyBoost(team: Team, boost: Boost): EffectiveTeam {
   const overall = Math.max(40, computeTeamOverall(squad, team.tactics) + physicalAdjustment);
 
   return { squad, overall, physical, restoresFullPhysicalAfterMatch: boost === "Poupar elenco" };
+}
+
+/**
+ * Quantas vezes um time já usou um bônus, contado direto do histórico real de
+ * partidas — não de um contador local em memória. Cada `Match` já grava qual
+ * bônus cada lado usou (`homeBoost`/`awayBoost`), e esse histórico é
+ * sincronizado via Supabase junto com o resto da competição. Isso garante que
+ * a contagem reflita o uso de verdade em qualquer modo (Single ou
+ * Multiplayer) e sobreviva a um F5 no meio da competição, o que um contador
+ * só-no-navegador nunca conseguiria.
+ */
+export function countBoostUsage(matches: Match[], teamId: string, boost: Boost): number {
+  return matches.reduce((count, match) => {
+    const usedBoost = match.homeTeamId === teamId ? match.homeBoost : match.awayTeamId === teamId ? match.awayBoost : undefined;
+    return usedBoost === boost ? count + 1 : count;
+  }, 0);
 }

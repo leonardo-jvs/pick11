@@ -3,16 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Trophy, Skull, RotateCcw } from "lucide-react";
+import { Trophy, Skull } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { getPhaseLabel } from "@/services/cupService";
-import { resetCompetition } from "@/services/competitionSyncService";
 import { fetchRoom } from "@/services/roomService";
 import { ensureAnonymousSession } from "@/lib/supabase/auth";
-import { useRoomRealtime } from "@/hooks/useRoomRealtime";
 import { toast } from "@/store/toastStore";
 import { CupPhase } from "@/types/cup";
 
@@ -22,22 +20,14 @@ export default function CupFinalPage() {
   const room = useSessionStore((s) => s.room);
   const setRoom = useSessionStore((s) => s.setRoom);
   const cupState = useSessionStore((s) => s.cupState);
-  const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const userTeam = useSessionStore((s) => s.userTeam());
   const teams = useSessionStore((s) => s.teams);
   const reset = useSessionStore((s) => s.reset);
-  const [resetting, setResetting] = useState(false);
   const [reconnecting, setReconnecting] = useState(true);
 
-  const isHost = !!room && room.hostId === selfParticipantId;
-  const isSolo = !!room && room.maxPlayers === 1;
-
-  // Reconexão: sem isso, um F5 nesta tela deixava `selfParticipantId` vazio,
-  // e o próprio host deixava de ver o botão "Nova Copa" (isHost calculava
-  // errado). Também escuta o status da sala: se o host reiniciar a
-  // competição enquanto outro jogador ainda está aqui, ele é levado pro
-  // Lobby automaticamente junto.
+  // Reconexão: sem isso, um F5 nesta tela deixava a store vazia (ex: o
+  // resultado/campanha do usuário não conseguiam ser calculados).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -63,12 +53,6 @@ export default function CupFinalPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.roomId]);
 
-  useRoomRealtime(room?.id ?? null);
-
-  useEffect(() => {
-    if (room?.status === "lobby") router.push(ROUTES.lobby(room.id));
-  }, [room, router]);
-
   if (reconnecting) {
     return (
       <Screen center>
@@ -83,18 +67,6 @@ export default function CupFinalPage() {
         <p className="font-sans text-sm text-text-secondary">Nenhuma Copa concluída ainda.</p>
       </Screen>
     );
-  }
-
-  async function handleNewLeague() {
-    if (!room) return;
-    setResetting(true);
-    try {
-      await resetCompetition(room.id);
-      router.push(ROUTES.lobby(room.id));
-    } catch (e) {
-      toast.urgent(e instanceof Error ? e.message : "Não foi possível reiniciar a competição.");
-      setResetting(false);
-    }
   }
 
   const userMatches = cupState.knockout.filter((m) => m.homeId === userTeam.id || m.awayId === userTeam.id);
@@ -147,11 +119,6 @@ export default function CupFinalPage() {
         )}
 
         <div className="mt-8 space-y-2">
-          {!isSolo && isHost && (
-            <Button fullWidth size="lg" variant="secondary" icon={<RotateCcw size={16} />} isLoading={resetting} onClick={handleNewLeague}>
-              Nova Copa (mesma sala)
-            </Button>
-          )}
           <Button fullWidth size="lg" onClick={playAgain}>
             Jogar novamente
           </Button>

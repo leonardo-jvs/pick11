@@ -22,17 +22,25 @@ function shuffle<T>(arr: T[]): T[] {
 /**
  * Monta a sequência completa de rodadas do snake draft. Cada participante joga
  * ceil(11/2) = 6 rodadas: 5 rodadas de 2 escolhas + 1 rodada final de 1 escolha
- * (11 é ímpar). A ordem alterna a cada rodada (snake).
+ * (11 é ímpar). A ordem alterna a cada rodada (snake) — EXCETO com exatamente
+ * 2 jogadores, onde a inversão da serpentina tradicional faz o mesmo jogador
+ * cair duas vezes seguidas na virada de cada rodada (round N termina com o
+ * jogador 2, e o round N+1 invertido começa com o jogador 2 de novo) — o
+ * cronômetro reinicia corretamente nesse caso, mas a experiência fica confusa
+ * (a mesma pessoa escolhe duas vezes seguidas, sem nenhuma pausa perceptível
+ * pra "vez do outro"). Com só 2 jogadores, a ordem simplesmente nunca inverte:
+ * A, B, A, B... — cada um sempre escolhe uma vez por rodada, alternando limpo.
  */
 function buildTurnSequence(order: string[]): DraftTurn[] {
   const turns: DraftTurn[] = [];
   const totalMetaRounds = Math.ceil(DRAFT_CONFIG.STARTERS_DRAFTED / DRAFT_CONFIG.PICKS_PER_ROUND);
+  const isTwoPlayerRoom = order.length === 2;
   let index = 0;
 
   for (let round = 0; round < totalMetaRounds; round++) {
     const picksAlreadyAssigned = round * DRAFT_CONFIG.PICKS_PER_ROUND;
     const requiredPicks = Math.min(DRAFT_CONFIG.PICKS_PER_ROUND, DRAFT_CONFIG.STARTERS_DRAFTED - picksAlreadyAssigned);
-    const roundOrder = round % 2 === 0 ? order : [...order].reverse();
+    const roundOrder = isTwoPlayerRoom || round % 2 === 0 ? order : [...order].reverse();
     for (const participantId of roundOrder) {
       turns.push({ index: index++, participantId, requiredPicks });
     }

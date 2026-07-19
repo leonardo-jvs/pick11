@@ -21,6 +21,7 @@ import {
   CompetitionSnapshot,
 } from "@/services/competitionSyncService";
 import { fetchRoom } from "@/services/roomService";
+import { countBoostUsage } from "@/services/matchPrepService";
 import { ensureAnonymousSession } from "@/lib/supabase/auth";
 import { useCompetitionRealtime } from "@/hooks/useCompetitionRealtime";
 import { toast } from "@/store/toastStore";
@@ -59,8 +60,6 @@ export default function PreMatchPage() {
   const roundReadiness = useSessionStore((s) => s.roundReadiness);
   const competitionVersion = useSessionStore((s) => s.competitionVersion);
   const competitionDeadline = useSessionStore((s) => s.competitionDeadline);
-  const boostUsage = useSessionStore((s) => s.boostUsage);
-  const recordBoostUse = useSessionStore((s) => s.recordBoostUse);
   const userTeam = useSessionStore((s) => s.userTeam());
 
   const isCup = room?.gameMode === "cup";
@@ -302,16 +301,17 @@ export default function PreMatchPage() {
   const opponentReady = !!(opponent && roundReadiness[opponent.id]?.ready);
 
   function isBoostDisabled(boost: Boost) {
-    if (lockedBoost !== null || iAmReady) return true;
+    if (lockedBoost !== null || iAmReady || !userTeam) return true;
     const limit = BOOST_USES[boost];
     if (limit === null) return false;
-    return (boostUsage[boost] ?? 0) >= limit;
+    return countBoostUsage(matches, userTeam.id, boost) >= limit;
   }
 
   function boostUsesLabel(boost: Boost) {
+    if (!userTeam) return null;
     const limit = BOOST_USES[boost];
     if (limit === null) return null;
-    const used = boostUsage[boost] ?? 0;
+    const used = countBoostUsage(matches, userTeam.id, boost);
     return `${Math.max(0, limit - used)}/${limit} usos`;
   }
 
@@ -358,7 +358,6 @@ export default function PreMatchPage() {
     if (starting || iAmReady || !room || !userTeam) return;
     setStarting(true);
     const boost = lockedBoost ?? "Nenhum";
-    if (boost !== "Nenhum") recordBoostUse(boost);
     await submitMyReadiness(boost);
     setStarting(false);
   }

@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { Room } from "@/types/room";
-import { Team, Boost } from "@/types/team";
+import { Team } from "@/types/team";
 import { Match } from "@/types/match";
 import { DraftState } from "@/types/draft";
 import { CupState } from "@/types/cup";
@@ -25,10 +25,6 @@ interface SessionState {
   competitionDeadline: string | null;
   /** Quem já confirmou presença (e com qual bônus) na rodada atual */
   roundReadiness: Record<string, { ready: boolean; boost: string }>;
-  /** Boost escolhido na Pré-Partida para a próxima simulação (consumido e resetado após a partida) */
-  pendingBoost: Boost;
-  /** Quantas vezes cada boost já foi usado nesta temporada (limites em BOOST_USES) */
-  boostUsage: Partial<Record<Boost, number>>;
   /** Modo de jogo da sala — Liga (temporada completa) ou Copa (mata-mata curto) */
   gameMode: "league" | "cup";
   /** Só populado quando gameMode === "cup" */
@@ -47,8 +43,6 @@ interface SessionState {
   setMatches: (matches: Match[]) => void;
   setCompetitionSync: (version: number, deadline: string | null, roundReadiness: Record<string, { ready: boolean; boost: string }>) => void;
   setCurrentRound: (round: number) => void;
-  setPendingBoost: (boost: Boost) => void;
-  recordBoostUse: (boost: Boost) => void;
   setGameMode: (mode: "league" | "cup") => void;
   setCupState: (cupState: CupState) => void;
   reset: () => void;
@@ -69,8 +63,6 @@ const initialState = {
   competitionVersion: 0,
   competitionDeadline: null as string | null,
   roundReadiness: {} as Record<string, { ready: boolean; boost: string }>,
-  pendingBoost: "Nenhum" as Boost,
-  boostUsage: {},
   gameMode: "league" as const,
   cupState: null,
 };
@@ -108,9 +100,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setMatches: (matches) => set({ matches }),
   setCompetitionSync: (competitionVersion, competitionDeadline, roundReadiness) => set({ competitionVersion, competitionDeadline, roundReadiness }),
   setCurrentRound: (round) => set({ currentRound: round }),
-  setPendingBoost: (boost) => set({ pendingBoost: boost }),
-  recordBoostUse: (boost) =>
-    set((state) => ({ boostUsage: { ...state.boostUsage, [boost]: (state.boostUsage[boost] ?? 0) + 1 } })),
   setGameMode: (gameMode) => set({ gameMode }),
   setCupState: (cupState) => set({ cupState }),
   reset: () => set({ ...initialState }),

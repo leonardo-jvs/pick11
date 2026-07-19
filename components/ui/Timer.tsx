@@ -29,23 +29,38 @@ export function Timer({
   const [remaining, setRemaining] = useState(seconds);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  // Ancora o início da contagem no relógio real. A cada tick, o valor exibido
+  // é recalculado a partir de "quantos segundos realmente se passaram desde
+  // que a contagem começou" — não de simplesmente subtrair 1 a cada disparo
+  // do setInterval. Isso corrige o mostrador em dispositivos que atrasam ou
+  // pulam ticks (comum em abas mobile em segundo plano / economia de
+  // bateria): mesmo que o interval dispare tarde ou irregular, o número
+  // exibido sempre bate com o tempo real decorrido. A lógica de quando
+  // reiniciar (`resetKey`/`seconds`) e quando disparar `onComplete`
+  // (`remaining === 0`) continua exatamente a mesma de antes.
+  const startedAtRef = useRef(Date.now());
 
   // Reinicia a contagem sempre que a rodada (resetKey) ou a duração mudarem.
   // Fica em um efeito isolado — nunca durante o render.
   useEffect(() => {
+    startedAtRef.current = Date.now();
     setRemaining(seconds);
   }, [seconds, resetKey]);
 
   // Único intervalo ativo por vez: o cleanup abaixo sempre destrói o intervalo
   // anterior antes de criar outro, seja por troca de rodada, pausa ou duração.
-  // O updater de setRemaining APENAS decrementa o número — nunca chama
-  // onComplete nem qualquer outro setState de fora daqui, evitando o erro
-  // "Cannot update a component while rendering a different component".
+  // O updater de setRemaining APENAS recalcula o número a partir do relógio
+  // real — nunca chama onComplete nem qualquer outro setState de fora daqui,
+  // evitando o erro "Cannot update a component while rendering a different
+  // component". Roda a cada 250ms (não 1s) só pra corrigir o mostrador mais
+  // rápido caso um tick anterior tenha atrasado — a granularidade exibida
+  // continua em segundos inteiros.
   useEffect(() => {
     if (paused) return;
     const id = setInterval(() => {
-      setRemaining((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
+      const elapsedSeconds = Math.floor((Date.now() - startedAtRef.current) / 1000);
+      setRemaining(Math.max(0, seconds - elapsedSeconds));
+    }, 250);
     return () => clearInterval(id);
   }, [seconds, resetKey, paused]);
 
