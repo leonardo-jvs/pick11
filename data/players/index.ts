@@ -19,6 +19,7 @@ import { MIRASSOL_PLAYERS } from "./common/mirassol";
 import { BRAGANTINO_PLAYERS } from "./common/bragantino";
 import { SPORT_PLAYERS } from "./common/sport";
 import { JUVENTUDE_PLAYERS } from "./common/juventude";
+import { COMMON_PLAYERS_V2 } from "./common/expansion";
 import { PRIME_PLAYERS } from "./prime";
 import { VETERAN_PLAYERS } from "./veteran";
 import { LEGEND_PLAYERS } from "./legends";
@@ -51,6 +52,7 @@ export const COMMON_PLAYERS: Player[] = [
   ...BRAGANTINO_PLAYERS,
   ...SPORT_PLAYERS,
   ...JUVENTUDE_PLAYERS,
+  ...COMMON_PLAYERS_V2,
 ];
 
 export { PRIME_PLAYERS, VETERAN_PLAYERS, LEGEND_PLAYERS, PROCLUBS_PLAYERS };

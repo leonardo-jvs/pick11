@@ -1,4 +1,5 @@
 import { Player } from "@/types/player";
+import { LEGEND_PLAYERS_V2 } from "@/data/players/legends/index-v3";
 
 /**
  * Cartas "Lendária" — ídolos históricos, sem vínculo com uma temporada
@@ -35,11 +36,13 @@ export const LEGEND_PLAYERS: Player[] = [
 
   // 87-88 — carreiras muito marcantes
   { id: "legend-leandro", name: "Leandro", club: "Flamengo", season: "1981", position: "LAT", overall: 88, attackStyle: "Cruzamentos", defenseStyle: "Bloco médio", physical: 85, category: "legend" },
-  { id: "legend-edmundo", name: "Edmundo", club: "Vasco da Gama", season: "1997", position: "ATA", overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 84, category: "legend", athleteKey: "edmundo" },
+  { id: "legend-edmundo", name: "Edmundo", club: "Vasco da Gama", season: "1998", position: "ATA", overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 84, category: "legend", athleteKey: "edmundo" },
   { id: "legend-rai", name: "Raí", club: "São Paulo", season: "1992", position: "MEI", secondaryPositions: ["ATA"], overall: 88, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 83, category: "legend" },
   { id: "legend-luizao", name: "Luizão", club: "São Paulo", season: "1998", position: "ATA", overall: 87, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 85, category: "legend" },
   { id: "legend-alex", name: "Alex", club: "Cruzeiro", season: "2005", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 82, category: "legend", athleteKey: "alex" },
   { id: "legend-diegoribas", name: "Diego Ribas", club: "Flamengo", season: "2009", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 84, category: "legend", athleteKey: "diegoribas" },
   { id: "legend-marcelinhocarioca", name: "Marcelinho Carioca", club: "Corinthians", season: "1995", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Cruzamentos", defenseStyle: "Bloco médio", physical: 81, category: "legend", athleteKey: "marcelinhocarioca" },
   { id: "legend-petkovic", name: "Petkovic", club: "Flamengo", season: "2001", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 82, category: "legend", athleteKey: "petkovic" },
+
+  ...LEGEND_PLAYERS_V2,
 ];
