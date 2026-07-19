@@ -51,6 +51,7 @@ export default function PreMatchPage() {
   const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
   const setRoom = useSessionStore((s) => s.setRoom);
+  const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const teams = useSessionStore((s) => s.teams);
   const schedule = useSessionStore((s) => s.schedule);
@@ -66,6 +67,12 @@ export default function PreMatchPage() {
   // Singleplayer é sempre sala de 1 jogador — mantém o fluxo antigo (botão
   // "Iniciar Partida"). Multiplayer nunca mostra esse botão (item 6).
   const isSolo = !!room && room.maxPlayers === 1;
+  // Só o host tem autoridade sobre o cronômetro/início da rodada no
+  // Multiplayer — os demais só acompanham (nenhum cliente secundário roda
+  // lógica de cronômetro). No Singleplayer isso nunca importa: o próprio
+  // jogador sempre É o host da própria sala.
+  const isHost = !!room && room.hostId === selfParticipantId;
+  const hasTimerAuthority = isSolo || isHost;
 
   const [lockedBoost, setLockedBoost] = useState<Boost | null>(null);
   const [starting, setStarting] = useState(false);
@@ -178,11 +185,12 @@ export default function PreMatchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.id, teams, schedule, cupState, matches, currentRound, roundReadiness, competitionDeadline, competitionVersion]);
 
-  // Atalho: dispara mais cedo se todos os humanos da rodada já confirmaram —
-  // só é relevante pra quem ainda usa o fluxo com botão (Singleplayer). No
-  // Multiplayer o disparo garantido é sempre o cronômetro (onComplete do Timer).
+  // Atalho: dispara mais cedo se todos os humanos da rodada já confirmaram.
+  // Só quem tem autoridade sobre o cronômetro tenta isso — no Multiplayer,
+  // somente o host; os demais clientes nunca executam lógica de cronômetro,
+  // só observam o resultado chegar via Realtime.
   useEffect(() => {
-    if (!room || teams.length === 0) return;
+    if (!hasTimerAuthority || !room || teams.length === 0) return;
     const snapshot: CompetitionSnapshot = {
       teams,
       schedule: schedule.length > 0 ? schedule : null,
@@ -198,7 +206,7 @@ export default function PreMatchPage() {
     const everyoneReady = humanIds.length > 0 && humanIds.every((id) => roundReadiness[id]?.ready);
     if (everyoneReady) attemptSimulateRound();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roundReadiness]);
+  }, [hasTimerAuthority, roundReadiness]);
 
   // Se o prazo da rodada já nasceu vencido (ex: chegamos aqui depois de
   // assistir ~10s de narração/estatísticas da rodada anterior, tempo
@@ -383,13 +391,23 @@ export default function PreMatchPage() {
               </button>
             )}
           </div>
-          <Timer
-            seconds={timerSeconds}
-            resetKey={`${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`}
-            onComplete={attemptSimulateRound}
-            size={64}
-          />
+          {hasTimerAuthority ? (
+            <Timer
+              seconds={timerSeconds}
+              resetKey={`${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`}
+              onComplete={attemptSimulateRound}
+              size={64}
+            />
+          ) : (
+            <div className="flex size-16 shrink-0 items-center justify-center">
+              <div className="size-6 animate-spin rounded-full border-2 border-border-strong border-t-teal-bright" />
+            </div>
+          )}
         </div>
+
+        {!hasTimerAuthority && (
+          <p className="-mt-2 mb-4 font-sans text-xs text-text-tertiary">Aguardando início da rodada...</p>
+        )}
 
         <div className="mb-4 grid grid-cols-4 gap-2">
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">

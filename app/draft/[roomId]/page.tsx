@@ -87,6 +87,12 @@ export default function DraftPage() {
   const turnParticipant = room?.participants.find((p) => p.id === currentTurn?.participantId) ?? null;
   const selfParticipant = room?.participants.find((p) => p.id === selfParticipantId) ?? null;
   const hideOverall = room?.draftMode === "hidden";
+  // Multiplayer: só quem está com a vez vê e roda o cronômetro — os demais só
+  // acompanham por uma mensagem de espera (nenhum cliente secundário executa
+  // lógica de cronômetro). Singleplayer nunca é afetado: como só existe um
+  // humano no draft solo, toda vez ali já É a vez dele.
+  const isSolo = !!room && room.maxPlayers === 1;
+  const showTimer = isSolo || isSelfTurn;
 
   useEffect(() => {
     setSelectedIds([]);
@@ -287,15 +293,16 @@ export default function DraftPage() {
                   Rodada {Math.floor(currentTurn.index / draftState.order.length) + 1}
                   {" · "}
                   <span className={isSelfTurn ? "font-semibold text-gold" : "text-text-secondary"}>
-                    {isSelfTurn ? "Sua vez!" : `Vez de ${turnParticipant?.name ?? "—"}`}
+                    {isSelfTurn ? "Sua vez!" : `${turnParticipant?.name ?? "—"} está escolhendo...`}
                   </span>
                 </p>
-                <Timer
-                  seconds={timerSeconds}
-                  resetKey={currentTurn.index}
-                  onComplete={handleTimeout}
-                  size={52}
-                />
+                {showTimer ? (
+                  <Timer seconds={timerSeconds} resetKey={currentTurn.index} onComplete={handleTimeout} size={52} />
+                ) : (
+                  <div className="flex size-[52px] shrink-0 items-center justify-center">
+                    <div className="size-5 animate-spin rounded-full border-2 border-border-strong border-t-teal-bright" />
+                  </div>
+                )}
               </div>
 
               <div className="mt-1.5 flex gap-1.5 overflow-x-auto">
