@@ -214,6 +214,13 @@ export default function DraftPage() {
 
   async function handleTimeout() {
     if (!draftState || !currentTurn || !room) return;
+    // Trava de sanidade: só resolve de verdade se o prazo do servidor já
+    // tiver passado mesmo. `onComplete` é disparado pelo componente Timer,
+    // mas nunca confiamos cegamente nisso pra decidir o auto-pick — sempre
+    // conferimos contra `draftDeadline` (o relógio real do servidor) antes
+    // de agir. Isso impede qualquer disparo prematuro de virar um auto-pick
+    // instantâneo, sem mudar quando o timeout DEVE de fato acontecer.
+    if (draftDeadline && Date.now() < new Date(draftDeadline).getTime()) return;
     const { state: next } = resolveTimeout(draftState, isSelfTurn ? selectedIds : []);
     try {
       const accepted = await submitDraftState(room.id, draftVersion, next);
