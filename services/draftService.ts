@@ -90,10 +90,14 @@ function ensurePoolHasEligiblePlayer(pool: Player[], formation: TeamTactics["for
 }
 
 /**
- * Sorteia os candidatos de uma rodada de forma "inteligente": ~70% jogadores
- * que ainda podem ocupar uma posição vaga na formação do participante, ~30%
- * de outras posições (mantém o Draft imprevisível e estratégico). Sempre
- * garante pelo menos 1 candidato elegível entre os oferecidos.
+ * Sorteia os candidatos de uma rodada. Prioridade #1, sempre: garantir pelo
+ * menos 1 candidato pra CADA posição que ainda está em aberto na formação —
+ * nunca só "pelo menos 1 candidato elegível no total", porque isso permitia
+ * o Draft oferecer, por exemplo, 6 atacantes quando o time ainda precisava de
+ * ATA + ZAG + LAT, deixando ZAG e LAT sem nenhuma opção naquela rodada. Só
+ * depois de cobrir todas as posições em aberto (dentro do orçamento de
+ * `count` cartas) é que o resto das vagas usa a mecânica ~70% elegível / 30%
+ * qualquer posição de sempre, pra manter o Draft imprevisível.
  */
 function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"], filledSlotIds: Set<string>, count: number): Player[] {
   const eligible: Player[] = [];
@@ -103,16 +107,42 @@ function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"]
     else others.push(player);
   }
 
+  // Quais posições (GOL/ZAG/LAT/VOL/MEI/ATA) ainda têm pelo menos um slot vago
+  // na formação — é a união das posições aceitas por todo slot ainda não
+  // preenchido. Preencher QUALQUER slot que aceite aquela posição já conta.
+  const openPositions = new Set(
+    getFormationSlots(formation)
+      .filter((slot) => !filledSlotIds.has(slot.id))
+      .flatMap((slot) => slot.acceptedPositions)
+  );
+
+  const guaranteed: Player[] = [];
+  const guaranteedIds = new Set<string>();
+  // Ordem aleatória: se houver mais posições em aberto do que cartas no
+  // orçamento, não é sempre a mesma posição que fica de fora.
+  for (const position of shuffle([...openPositions])) {
+    if (guaranteed.length >= count) break;
+    const candidatesForPosition = eligible.filter(
+      (p) => !guaranteedIds.has(p.id) && (p.position === position || p.secondaryPositions?.includes(position))
+    );
+    if (candidatesForPosition.length === 0) continue;
+    const [chosen] = drawWeightedByCategory(candidatesForPosition, 1);
+    guaranteed.push(chosen);
+    guaranteedIds.add(chosen.id);
+  }
+
   // Ordena por raridade de categoria (95% comum / 4% Auge / 1% Lendária) dentro de
   // cada grupo — mantém a mecânica 70/30 de elegibilidade exatamente como estava,
   // só a ORDEM de prioridade dentro de cada grupo passa a respeitar a raridade.
-  const shuffledEligible = drawWeightedByCategory(eligible, eligible.length);
+  const remainingEligible = eligible.filter((p) => !guaranteedIds.has(p.id));
+  const shuffledEligible = drawWeightedByCategory(remainingEligible, remainingEligible.length);
   const shuffledOthers = drawWeightedByCategory(others, others.length);
 
-  const eligibleTarget = Math.round(count * 0.7);
-  const othersTarget = count - eligibleTarget;
+  const remainingCount = count - guaranteed.length;
+  const eligibleTarget = Math.round(remainingCount * 0.7);
+  const othersTarget = remainingCount - eligibleTarget;
 
-  const picked = [...shuffledEligible.slice(0, eligibleTarget), ...shuffledOthers.slice(0, othersTarget)];
+  const picked = [...guaranteed, ...shuffledEligible.slice(0, eligibleTarget), ...shuffledOthers.slice(0, othersTarget)];
 
   // completa com o que sobrar de qualquer um dos dois grupos, se um deles não tiver o suficiente
   if (picked.length < count) {
@@ -126,7 +156,7 @@ function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"]
   // garantia final: se por algum motivo nenhum elegível entrou na amostra
   // (não deveria acontecer, mas nunca deixamos passar), força a troca de 1 carta
   if (eligible.length > 0 && !result.some((p) => findBestSlot(p, formation, filledSlotIds))) {
-    result[0] = shuffledEligible[0];
+    result[0] = shuffledEligible[0] ?? guaranteed[0];
   }
 
   return result;

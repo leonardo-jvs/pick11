@@ -156,7 +156,7 @@ export const PRIME_PLAYERS: Player[] = [
 
   { id: "prime-evertonribeiro-2013", name: "Everton Ribeiro", club: "Cruzeiro", season: "2013", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 82, category: "prime", athleteKey: "evertonribeiro" },
   { id: "prime-ricardogoulart-2013", name: "Ricardo Goulart", club: "Cruzeiro", season: "2013", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 82, category: "prime" },
-  { id: "prime-arrascaeta-2015", name: "Arrascaeta", club: "Cruzeiro", season: "2015", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 84, category: "prime", athleteKey: "arrascaeta" },
+  { id: "prime-arrascaeta-2022", name: "Arrascaeta", club: "Flamengo", season: "2022", position: "MEI", secondaryPositions: ["ATA"], overall: 91, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 85, category: "prime", athleteKey: "arrascaeta" },
 
   { id: "prime-diegotardelli-2014", name: "Diego Tardelli", club: "Atlético Mineiro", season: "2014", position: "ATA", secondaryPositions: ["MEI"], overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 84, category: "prime" },
   { id: "prime-victor-2013", name: "Victor", club: "Atlético Mineiro", season: "2013", position: "GOL", overall: 87, attackStyle: "Posse", defenseStyle: "Linha baixa", physical: 85, category: "prime" },
