@@ -51,7 +51,7 @@ const SECTIONS: Section[] = [
         </p>
         <p>
           Só pode escolher jogadores que sirvam pra uma posição ainda vaga na sua formação. Depois de escolhido, um
-          jogador nunca mais aparece pra ninguém — nem outra versão dele (Comum, Auge, Lendária ou Pro Clubs).
+          jogador nunca mais aparece pra ninguém — nem outra versão dele (Comum, Fim de Carreira, Auge ou Lendária).
         </p>
         <p>
           O administrador da sala pode ativar o modo <strong className="text-text-primary">Over Oculto</strong>: o
@@ -102,28 +102,32 @@ const SECTIONS: Section[] = [
   {
     icon: <Sparkles size={18} />,
     title: "Cartas especiais",
-    summary: "Comum, Auge, Lendária e Pro Clubs",
+    summary: "Comum, Fim de Carreira, Auge e Lendária",
     body: (
       <div className="space-y-2">
         <p>
           A maioria das cartas do Draft é <strong className="text-text-primary">Comum</strong> — jogadores atuais dos
-          clubes da Série A. Mas de vez em quando aparece algo raro:
+          clubes da Série A. Da mais fácil pra mais rara de aparecer:
         </p>
         <ul className="list-inside list-disc space-y-1 pl-1">
+          <li>
+            <strong className="text-blue-600">Fim de Carreira</strong> (azul claro) — grandes nomes já veteranos, na
+            última grande passagem da carreira pelo futebol brasileiro.
+          </li>
           <li>
             <strong className="text-prime-bright">Auge</strong> (roxa) — a melhor temporada da carreira de um
             jogador, com o clube e o ano marcados na carta.
           </li>
           <li>
-            <strong className="text-legend-text">Lendária</strong> (dourada) — ídolos históricos do futebol
-            brasileiro.
-          </li>
-          <li>
-            <strong className="text-danger">Pro Clubs</strong> (vermelha) — jogadores fictícios especiais, os mais
-            raros de todos.
+            <strong className="text-legend-text">Lendária</strong> (dourada) — a versão auge dos maiores ídolos
+            históricos do futebol brasileiro. A carta mais rara do jogo.
           </li>
         </ul>
-        <p>Cada atleta só existe uma vez por liga — se a versão Auge de alguém for escolhida, nenhuma outra versão dele aparece de novo naquela competição.</p>
+        <p>
+          Cada atleta só existe uma vez por liga — se a versão Fim de Carreira de alguém for escolhida, nenhuma
+          outra versão dele (Comum, Auge ou Lendária) aparece de novo naquela competição.
+        </p>
+        <p className="text-text-tertiary">O modo Pro Clubs está temporariamente indisponível.</p>
       </div>
     ),
   },

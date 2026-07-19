@@ -7,11 +7,13 @@ export type DefenseStyle = "Pressão alta" | "Bloco médio" | "Linha baixa";
 /**
  * common = jogador atual do Brasileirão (carta padrão).
  * prime = "Auge" — versão histórica de uma temporada marcante.
+ * veteran = "Fim de Carreira" — grandes nomes já veteranos, no fim da carreira.
  * legend = "Lendária" — ídolo histórico do futebol brasileiro.
  * proclubs = "Pro Clubs" — jogador fictício inspirado no modo Pro Clubs, carta muito rara.
+ * (Pro Clubs está temporariamente desativado — ver data/players/proclubs/README.)
  * Ausente = tratado como "common" (retrocompatível com dados antigos/fictícios).
  */
-export type PlayerCategory = "common" | "prime" | "legend" | "proclubs";
+export type PlayerCategory = "common" | "prime" | "veteran" | "legend" | "proclubs";
 
 export interface Player {
   id: string;
@@ -25,7 +27,7 @@ export interface Player {
   defenseStyle: DefenseStyle;
   physical: number; // 0–100, decai ao longo da liga
   category?: PlayerCategory;
-  /** Só relevante para cartas "prime" (temporada retratada, ex: "2019") */
+  /** Ano da carta — obrigatório em toda carta do jogo. Comuns atuais usam "2025"; Auge/Fim de Carreira usam a temporada retratada. */
   season?: string;
   /**
    * Identidade estável do atleta real, compartilhada entre todas as cartas

@@ -1,4 +1,5 @@
 import { Player } from "@/types/player";
+import { PRIME_PLAYERS_V2 } from "@/data/players/prime/index-v2";
 
 /**
  * Cartas "Auge" — a mesma pessoa pode existir também como carta comum (elenco
@@ -170,4 +171,6 @@ export const PRIME_PLAYERS: Player[] = [
   { id: "prime-luan-2017", name: "Luan", club: "Grêmio", season: "2017", position: "MEI", secondaryPositions: ["ATA"], overall: 88, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 82, category: "prime" },
   { id: "prime-geromel-2017", name: "Geromel", club: "Grêmio", season: "2017", position: "ZAG", overall: 87, attackStyle: "Posse", defenseStyle: "Linha baixa", physical: 84, category: "prime" },
   { id: "prime-kannemann-2017", name: "Kannemann", club: "Grêmio", season: "2017", position: "ZAG", overall: 86, attackStyle: "Posse", defenseStyle: "Linha baixa", physical: 83, category: "prime", athleteKey: "kannemann" },
+
+  ...PRIME_PLAYERS_V2,
 ];

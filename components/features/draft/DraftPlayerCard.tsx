@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Sparkles, Crown, Gamepad2 } from "lucide-react";
+import { Check, Sparkles, Crown, Gamepad2, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { DraftPlayerCard as DraftPlayerCardType, Position, PlayerCategory } from "@/types/player";
@@ -54,6 +54,20 @@ const CATEGORY_THEME: Record<
     posOpen: "border-prime/40 bg-prime/15 text-prime-bright",
     posClosed: "border-border-subtle bg-surface-elevated text-text-tertiary",
     badge: { label: "AUGE", icon: <Sparkles size={10} />, className: "bg-prime/20 text-prime-bright border-prime/50" },
+  },
+  veteran: {
+    // Fundo azul claro, de propósito bem diferente do dourado (Lendária) e do
+    // roxo (Auge) — fácil de reconhecer de longe na coleção.
+    cardBg: "bg-blue-50",
+    border: "border-blue-300/70",
+    glow: "shadow-[0_0_18px_rgba(59,130,246,0.3)]",
+    nameColor: "text-blue-950",
+    secondaryText: "text-blue-950/70",
+    tertiaryText: "text-blue-950/50",
+    dividerBorder: "border-blue-300/50",
+    posOpen: "border-blue-400/50 bg-blue-500/15 text-blue-700",
+    posClosed: "border-blue-300/30 bg-black/5 text-blue-950/40",
+    badge: { label: "FIM DE CARREIRA", icon: <Clock size={10} />, className: "bg-blue-500/20 text-blue-700 border-blue-400/50" },
   },
   legend: {
     cardBg: "bg-legend-bg",

@@ -20,6 +20,7 @@ import { BRAGANTINO_PLAYERS } from "./common/bragantino";
 import { SPORT_PLAYERS } from "./common/sport";
 import { JUVENTUDE_PLAYERS } from "./common/juventude";
 import { PRIME_PLAYERS } from "./prime";
+import { VETERAN_PLAYERS } from "./veteran";
 import { LEGEND_PLAYERS } from "./legends";
 import { PROCLUBS_PLAYERS } from "./proclubs";
 
@@ -52,7 +53,15 @@ export const COMMON_PLAYERS: Player[] = [
   ...JUVENTUDE_PLAYERS,
 ];
 
-export { PRIME_PLAYERS, LEGEND_PLAYERS, PROCLUBS_PLAYERS };
+export { PRIME_PLAYERS, VETERAN_PLAYERS, LEGEND_PLAYERS, PROCLUBS_PLAYERS };
 
-/** Todos os jogadores do banco, de todas as categorias, sem distinção. */
-export const ALL_PLAYERS: Player[] = [...COMMON_PLAYERS, ...PRIME_PLAYERS, ...LEGEND_PLAYERS, ...PROCLUBS_PLAYERS];
+/**
+ * Todos os jogadores do banco, de todas as categorias ATIVAS.
+ *
+ * Pro Clubs está TEMPORARIAMENTE DESATIVADO (não faz parte desta atualização
+ * de cartas) — PROCLUBS_PLAYERS continua totalmente preservado (arquivo,
+ * dados, lógica de exibição) e importável normalmente, só não é somado aqui.
+ * Para reativar no futuro, basta voltar a incluir `...PROCLUBS_PLAYERS` nesta
+ * lista — nenhuma outra parte do sistema precisa mudar.
+ */
+export const ALL_PLAYERS: Player[] = [...COMMON_PLAYERS, ...PRIME_PLAYERS, ...VETERAN_PLAYERS, ...LEGEND_PLAYERS];

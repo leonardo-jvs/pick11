@@ -2,19 +2,24 @@ import { Player, PlayerCategory } from "@/types/player";
 
 /**
  * Frequência das cartas especiais no Draft — ajustar só aqui.
- * Ordem de raridade: Lendária (mais rara) > Pro Clubs > Auge > Comum (padrão).
+ * Nova ordem de raridade (da mais difícil pra mais fácil):
+ * Lendária > Auge > Fim de Carreira > Comum.
+ * Pro Clubs está temporariamente desativado (peso 0) — nenhuma carta proclubs
+ * entra em ALL_PLAYERS (ver data/players/index.ts), então isso aqui é só uma
+ * segunda trava de segurança caso o módulo seja reativado no futuro.
  */
 export const CARD_CATEGORY_WEIGHTS: Record<PlayerCategory, number> = {
-  legend: 0.04,
-  proclubs: 0.01,
-  prime: 0.08,
-  common: 0.87,
+  legend: 0.02,
+  prime: 0.06,
+  veteran: 0.09,
+  proclubs: 0,
+  common: 0.83,
 };
 
 function rollCategory(): PlayerCategory {
   const r = Math.random();
   let acc = 0;
-  for (const category of ["legend", "proclubs", "prime"] as const) {
+  for (const category of ["legend", "prime", "veteran", "proclubs"] as const) {
     acc += CARD_CATEGORY_WEIGHTS[category];
     if (r < acc) return category;
   }
@@ -32,6 +37,7 @@ export function drawWeightedByCategory(players: Player[], count: number): Player
   const buckets: Record<PlayerCategory, Player[]> = {
     common: [],
     prime: [],
+    veteran: [],
     legend: [],
     proclubs: [],
   };
