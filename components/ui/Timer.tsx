@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 export interface TimerProps {
   seconds: number;
   onComplete?: () => void;
+  /** Largura da barra em px (mantém o nome "size" pra não precisar mudar quem já usa o componente) */
   size?: number;
   paused?: boolean;
   /** Muda a key para reiniciar o timer (ex: nova rodada do draft) */
@@ -14,99 +15,52 @@ export interface TimerProps {
   label?: string;
 }
 
-const RADIUS = 45;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-export function Timer({
-  seconds,
-  onComplete,
-  size = 120,
-  paused = false,
-  resetKey,
-  className,
-  label,
-}: TimerProps) {
-  const [remaining, setRemaining] = useState(seconds);
+/**
+ * Barra de tempo — 100% CSS, sem nenhum `setInterval`/`Date.now()` calculando
+ * um número a cada tick. A barra some (de verde a vermelho) sozinha, via uma
+ * única animação CSS nativa do navegador, e `onComplete` é disparado por um
+ * único `setTimeout` agendado exatamente para o fim da contagem.
+ *
+ * Por que a troca: a versão anterior (numérica, com polling via setInterval)
+ * apresentava bugs visuais intermitentes e difíceis de reproduzir (números
+ * como "249" aparecendo do nada) — sintoma clássico de estado calculado
+ * repetidamente em JS divergindo do relógio real. Removendo esse cálculo
+ * repetido inteiramente (a barra não tem nenhum número pra "errar", e o
+ * disparo do fim de tempo é um único agendamento, não um polling) elimina
+ * essa classe inteira de bug pela raiz, não só sintomaticamente.
+ */
+export function Timer({ seconds, onComplete, size = 160, paused = false, resetKey, className, label }: TimerProps) {
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
-  // Ancora o início da contagem no relógio real. A cada tick, o valor exibido
-  // é recalculado a partir de "quantos segundos realmente se passaram desde
-  // que a contagem começou" — não de simplesmente subtrair 1 a cada disparo
-  // do setInterval. Isso corrige o mostrador em dispositivos que atrasam ou
-  // pulam ticks (comum em abas mobile em segundo plano / economia de
-  // bateria): mesmo que o interval dispare tarde ou irregular, o número
-  // exibido sempre bate com o tempo real decorrido. A lógica de quando
-  // reiniciar (`resetKey`/`seconds`) e quando disparar `onComplete`
-  // (`remaining === 0`) continua exatamente a mesma de antes.
-  const startedAtRef = useRef(Date.now());
 
-  // Reinicia a contagem sempre que a rodada (resetKey) ou a duração mudarem.
-  // Fica em um efeito isolado — nunca durante o render.
+  // Um ÚNICO agendamento por rodada — nunca um polling. O navegador dispara
+  // isso sozinho, exatamente na hora certa; não há como "acumular deriva" ao
+  // longo do tempo porque não existe nenhum recálculo repetido acontecendo.
   useEffect(() => {
-    startedAtRef.current = Date.now();
-    setRemaining(seconds);
-  }, [seconds, resetKey]);
-
-  // Único intervalo ativo por vez: o cleanup abaixo sempre destrói o intervalo
-  // anterior antes de criar outro, seja por troca de rodada, pausa ou duração.
-  // O updater de setRemaining APENAS recalcula o número a partir do relógio
-  // real — nunca chama onComplete nem qualquer outro setState de fora daqui,
-  // evitando o erro "Cannot update a component while rendering a different
-  // component". Roda a cada 250ms (não 1s) só pra corrigir o mostrador mais
-  // rápido caso um tick anterior tenha atrasado — a granularidade exibida
-  // continua em segundos inteiros.
-  useEffect(() => {
-    if (paused) return;
-    const id = setInterval(() => {
-      const elapsedSeconds = Math.floor((Date.now() - startedAtRef.current) / 1000);
-      setRemaining(Math.max(0, seconds - elapsedSeconds));
-    }, 250);
-    return () => clearInterval(id);
+    if (paused || seconds <= 0) return;
+    const id = setTimeout(() => onCompleteRef.current?.(), seconds * 1000);
+    return () => clearTimeout(id);
   }, [seconds, resetKey, paused]);
 
-  // onComplete é disparado como reação à mudança de `remaining`, sempre depois
-  // do commit do render — nunca dentro do updater de estado, nunca durante o render.
-  useEffect(() => {
-    if (remaining === 0) {
-      onCompleteRef.current?.();
-    }
-  }, [remaining]);
-
-  const progress = remaining / seconds;
-  const isUrgent = remaining <= Math.min(3, Math.ceil(seconds * 0.25));
-  const strokeColor = isUrgent ? "#FF5C5C" : "#2FE0BE";
+  const isPaused = paused || seconds <= 0;
 
   return (
-    <div
-      className={cn("relative inline-flex items-center justify-center", isUrgent && "animate-pulse-ring rounded-full", className)}
-      style={{ width: size, height: size }}
-    >
-      <svg width={size} height={size} viewBox="0 0 100 100" className="-rotate-90">
-        <circle cx="50" cy="50" r={RADIUS} fill="none" stroke="#233029" strokeWidth="6" />
-        <circle
-          cx="50"
-          cy="50"
-          r={RADIUS}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth="6"
-          strokeLinecap="round"
-          strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={CIRCUMFERENCE * (1 - progress)}
-          style={{ transition: "stroke-dashoffset 1s linear, stroke 0.3s ease" }}
+    <div className={cn("flex flex-col items-center gap-1.5", className)} style={{ width: size }}>
+      <div className="h-2.5 w-full overflow-hidden rounded-pill bg-surface-elevated">
+        {/* `key` força o React a desmontar e remontar esta div a cada nova
+            rodada — é assim que a animação CSS reinicia de forma confiável
+            do zero, sem precisar de nenhum JS pra "resetar" um valor. */}
+        <div
+          key={`${resetKey}-${seconds}-${isPaused}`}
+          className={cn("h-full rounded-pill", !isPaused && "animate-timer-countdown")}
+          style={{
+            width: isPaused ? (seconds <= 0 ? "0%" : "100%") : undefined,
+            backgroundColor: isPaused ? "#2FE0BE" : undefined,
+            animationDuration: isPaused ? undefined : `${seconds}s`,
+          }}
         />
-      </svg>
-      <div className="absolute flex flex-col items-center justify-center">
-        <span
-          className={cn(
-            "font-display text-4xl leading-none tracking-wide tabular-nums",
-            isUrgent ? "text-danger" : "text-text-primary"
-          )}
-        >
-          {remaining}
-        </span>
-        {label && <span className="mt-1 font-sans text-[11px] text-text-tertiary">{label}</span>}
       </div>
+      {label && <span className="font-sans text-[11px] text-text-tertiary">{label}</span>}
     </div>
   );
 }

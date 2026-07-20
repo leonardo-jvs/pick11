@@ -398,10 +398,10 @@ export default function PreMatchPage() {
               seconds={timerSeconds}
               resetKey={`${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`}
               onComplete={attemptSimulateRound}
-              size={64}
+              size={112}
             />
           </div>
-          {!showTimerNumber && <div className="size-16 shrink-0" />}
+          {!showTimerNumber && <div className="h-2.5 w-28 shrink-0" />}
         </div>
 
         {!showTimerNumber && (

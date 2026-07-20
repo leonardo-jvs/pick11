@@ -104,10 +104,17 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        "timer-countdown": {
+          "0%": { width: "100%", backgroundColor: "#2FE0BE" },
+          "55%": { backgroundColor: "#F5C542" },
+          "80%": { backgroundColor: "#FF5C5C" },
+          "100%": { width: "0%", backgroundColor: "#FF5C5C" },
+        },
       },
       animation: {
         "pulse-ring": "pulse-ring 1.4s ease-out infinite",
         "fade-up": "fade-up 0.4s ease-out both",
+        "timer-countdown": "timer-countdown 10s linear forwards",
       },
     },
   },

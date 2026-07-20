@@ -326,9 +326,9 @@ export default function DraftPage() {
                   </span>
                 </p>
                 <div className={cn(!showTimerNumber && "sr-only")} aria-hidden={!showTimerNumber}>
-                  <Timer seconds={timerSeconds} resetKey={currentTurn.index} onComplete={handleTimeout} size={52} />
+                  <Timer seconds={timerSeconds} resetKey={currentTurn.index} onComplete={handleTimeout} size={96} />
                 </div>
-                {!showTimerNumber && <div className="size-[52px] shrink-0" />}
+                {!showTimerNumber && <div className="h-2.5 w-24 shrink-0" />}
               </div>
 
               <div className="mt-1.5 flex gap-1.5 overflow-x-auto">
