@@ -5,10 +5,11 @@ import { useRouter, useParams } from "next/navigation";
 import { Screen } from "@/components/layout/Screen";
 import { Modal } from "@/components/ui/Modal";
 import { StandingsTable } from "@/components/features/league/StandingsTable";
+import { TopListTable } from "@/components/features/league/TopListTable";
 import { ROUTES } from "@/constants/routes";
 import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
-import { computeStandings } from "@/services/leagueService";
+import { computeStandings, computeTopScorers, computeTopAssists } from "@/services/leagueService";
 import { computeGroupStandings } from "@/services/cupService";
 import { fetchCompetitionState } from "@/services/competitionSyncService";
 import { fetchRoom } from "@/services/roomService";
@@ -92,6 +93,7 @@ export default function SimulationPage() {
   const [visibleCount, setVisibleCount] = useState(0);
   const [phase, setPhase] = useState<"narration" | "stats">("narration");
   const [showStandings, setShowStandings] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [reconnecting, setReconnecting] = useState(true);
   const navigatedRef = useRef(false);
 
@@ -194,6 +196,7 @@ export default function SimulationPage() {
     (async () => {
       await new Promise((r) => setTimeout(r, LIVE_MATCH_CONFIG.STATS_SECONDS * 1000));
       setShowStandings(false);
+      setShowStats(false);
       if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
           router.push(ROUTES.cupFinal(room.id));
@@ -354,6 +357,9 @@ export default function SimulationPage() {
                 Ver Classificação dos Grupos
               </button>
             )}
+            <button onClick={() => setShowStats(true)} className="mt-2 block w-full text-center font-sans text-sm text-teal-bright">
+              📊 Ver Estatísticas da Competição
+            </button>
           </div>
         )}
       </div>
@@ -369,6 +375,27 @@ export default function SimulationPage() {
           <StandingsTable standings={computeGroupStandings(userGroup, teams, matches)} />
         </Modal>
       )}
+
+      <Modal isOpen={showStats} onClose={() => setShowStats(false)} title="📊 Estatísticas da Competição">
+        <div className="space-y-5">
+          <div>
+            <h3 className="mb-2 font-sans text-sm font-semibold text-gold">🏆 Artilharia</h3>
+            <TopListTable
+              valueLabel="Gols"
+              emptyLabel="Ainda sem gols registrados nesta competição."
+              rows={computeTopScorers(matches, 10).map((s) => ({ playerName: s.playerName, teamName: s.teamName, value: s.goals }))}
+            />
+          </div>
+          <div>
+            <h3 className="mb-2 font-sans text-sm font-semibold text-teal-bright">🎯 Assistências</h3>
+            <TopListTable
+              valueLabel="Assist."
+              emptyLabel="Ainda sem assistências registradas nesta competição."
+              rows={computeTopAssists(matches, 10).map((a) => ({ playerName: a.playerName, teamName: a.teamName, value: a.assists }))}
+            />
+          </div>
+        </div>
+      </Modal>
     </Screen>
   );
 }

@@ -51,7 +51,6 @@ export default function PreMatchPage() {
   const params = useParams<{ roomId: string }>();
   const room = useSessionStore((s) => s.room);
   const setRoom = useSessionStore((s) => s.setRoom);
-  const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const teams = useSessionStore((s) => s.teams);
   const schedule = useSessionStore((s) => s.schedule);
@@ -67,13 +66,6 @@ export default function PreMatchPage() {
   // Singleplayer é sempre sala de 1 jogador — mantém o fluxo antigo (botão
   // "Iniciar Partida"). Multiplayer nunca mostra esse botão (item 6).
   const isSolo = !!room && room.maxPlayers === 1;
-  // Só o host (ou o próprio jogador solo) VÊ o número do cronômetro — mas o
-  // Timer roda (montado) pra todo mundo, sempre, restaurando a robustez
-  // original: qualquer cliente pode disparar a simulação da rodada via
-  // onComplete, sem depender de um único cliente "autorizado" continuar
-  // conectado. Só a aparência visual muda.
-  const isHost = !!room && room.hostId === selfParticipantId;
-  const showTimerNumber = isSolo || isHost;
 
   const [lockedBoost, setLockedBoost] = useState<Boost | null>(null);
   const [starting, setStarting] = useState(false);
@@ -393,7 +385,10 @@ export default function PreMatchPage() {
               </button>
             )}
           </div>
-          <div className={cn(!showTimerNumber && "sr-only")} aria-hidden={!showTimerNumber}>
+          {/* O Timer continua montado (roda exatamente os mesmos 10s
+              internamente, disparando a simulação da rodada normalmente) —
+              só nunca é exibido visualmente, pra ninguém. */}
+          <div className="sr-only" aria-hidden="true">
             <Timer
               seconds={timerSeconds}
               resetKey={`${currentRound}-${cupState?.phase}-${cupState?.currentGroupRound}`}
@@ -401,12 +396,9 @@ export default function PreMatchPage() {
               size={112}
             />
           </div>
-          {!showTimerNumber && <div className="h-2.5 w-28 shrink-0" />}
         </div>
 
-        {!showTimerNumber && (
-          <p className="-mt-2 mb-4 font-sans text-xs text-text-tertiary">Aguardando início da rodada...</p>
-        )}
+        <p className="-mt-2 mb-4 font-sans text-xs text-text-tertiary">A partida começa em 10 segundos.</p>
 
         <div className="mb-4 grid grid-cols-4 gap-2">
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">

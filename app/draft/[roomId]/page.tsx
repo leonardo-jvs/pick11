@@ -87,15 +87,6 @@ export default function DraftPage() {
   const turnParticipant = room?.participants.find((p) => p.id === currentTurn?.participantId) ?? null;
   const selfParticipant = room?.participants.find((p) => p.id === selfParticipantId) ?? null;
   const hideOverall = room?.draftMode === "hidden";
-  const isSolo = !!room && room.maxPlayers === 1;
-  // O Timer roda (montado) pra TODOS os clientes, sempre — é isso que mantém
-  // o auto-pick robusto (qualquer cliente pode disparar o troca-de-turno se
-  // precisar, sem depender de um único cliente "autorizado" continuar
-  // conectado). A única diferença é puramente visual: o número/círculo só
-  // aparece pro host — os demais continuam vendo normalmente as mensagens
-  // "Sua vez!"/"{nome} está escolhendo...", só sem nenhum indicador numérico.
-  const isHost = !!room && room.hostId === selfParticipantId;
-  const showTimerNumber = isSolo || isHost;
 
   // Marca, localmente e sem depender de nenhum dado vindo do servidor/Timer,
   // o instante em que ESTE cliente percebeu que o turno atual começou. É a
@@ -322,13 +313,15 @@ export default function DraftPage() {
                   Rodada {Math.floor(currentTurn.index / draftState.order.length) + 1}
                   {" · "}
                   <span className={isSelfTurn ? "font-semibold text-gold" : "text-text-secondary"}>
-                    {isSelfTurn ? "Sua vez!" : `${turnParticipant?.name ?? "—"} está escolhendo...`}
+                    {isSelfTurn ? "Sua vez. Você tem 10 segundos para escolher." : "Aguardando o oponente escolher..."}
                   </span>
                 </p>
-                <div className={cn(!showTimerNumber && "sr-only")} aria-hidden={!showTimerNumber}>
+                {/* O Timer continua montado (roda exatamente os mesmos 10s
+                    internamente, disparando o auto-pick normalmente) — só
+                    nunca é exibido visualmente, pra ninguém. */}
+                <div className="sr-only" aria-hidden="true">
                   <Timer seconds={timerSeconds} resetKey={currentTurn.index} onComplete={handleTimeout} size={96} />
                 </div>
-                {!showTimerNumber && <div className="h-2.5 w-24 shrink-0" />}
               </div>
 
               <div className="mt-1.5 flex gap-1.5 overflow-x-auto">
