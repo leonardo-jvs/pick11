@@ -97,6 +97,19 @@ export default function DraftPage() {
   const isHost = !!room && room.hostId === selfParticipantId;
   const showTimerNumber = isSolo || isHost;
 
+  // Marca, localmente e sem depender de nenhum dado vindo do servidor/Timer,
+  // o instante em que ESTE cliente percebeu que o turno atual começou. É a
+  // fonte de verdade mais confiável possível pra proteger contra qualquer
+  // disparo prematuro do timeout: mesmo que `draftDeadline` (que vem do
+  // servidor) estivesse por algum motivo desatualizado, esta marcação nunca
+  // pode estar — ela é escrita no exato momento em que o índice do turno muda.
+  const turnObservedAtRef = useRef<{ index: number; at: number } | null>(null);
+  useEffect(() => {
+    if (currentTurn && turnObservedAtRef.current?.index !== currentTurn.index) {
+      turnObservedAtRef.current = { index: currentTurn.index, at: Date.now() };
+    }
+  }, [currentTurn?.index]);
+
   useEffect(() => {
     setSelectedIds([]);
   }, [draftState?.currentTurnIndex]);
@@ -214,13 +227,19 @@ export default function DraftPage() {
 
   async function handleTimeout() {
     if (!draftState || !currentTurn || !room) return;
-    // Trava de sanidade: só resolve de verdade se o prazo do servidor já
-    // tiver passado mesmo. `onComplete` é disparado pelo componente Timer,
-    // mas nunca confiamos cegamente nisso pra decidir o auto-pick — sempre
-    // conferimos contra `draftDeadline` (o relógio real do servidor) antes
-    // de agir. Isso impede qualquer disparo prematuro de virar um auto-pick
-    // instantâneo, sem mudar quando o timeout DEVE de fato acontecer.
-    if (draftDeadline && Date.now() < new Date(draftDeadline).getTime()) return;
+    // Trava de sanidade: só resolve de verdade se, do ponto de vista DESTE
+    // cliente, o turno atual já estiver de pé há tempo suficiente (~10s).
+    // Usa a marcação local (turnObservedAtRef), nunca `draftDeadline` puro —
+    // assim a proteção não depende de nenhum dado vindo do servidor/Timer
+    // estar correto, só do relógio do próprio navegador. Isso impede
+    // qualquer disparo prematuro de virar um auto-pick instantâneo, sem
+    // mudar quando o timeout DEVE de fato acontecer.
+    const observed = turnObservedAtRef.current;
+    if (observed && observed.index === currentTurn.index) {
+      const elapsedMs = Date.now() - observed.at;
+      const minimumMs = DRAFT_CONFIG.PICK_TIMER_SECONDS * 1000 - 300; // pequena margem de segurança
+      if (elapsedMs < minimumMs) return;
+    }
     const { state: next } = resolveTimeout(draftState, isSelfTurn ? selectedIds : []);
     try {
       const accepted = await submitDraftState(room.id, draftVersion, next);
