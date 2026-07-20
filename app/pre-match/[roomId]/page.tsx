@@ -398,7 +398,7 @@ export default function PreMatchPage() {
           </div>
         </div>
 
-        <p className="-mt-2 mb-4 font-sans text-xs text-text-tertiary">A partida começa em 10 segundos.</p>
+        {!isSolo && <p className="-mt-2 mb-4 font-sans text-xs text-text-tertiary">A partida começa em 5 segundos.</p>}
 
         <div className="mb-4 grid grid-cols-4 gap-2">
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Screen } from "@/components/layout/Screen";
 import { Modal } from "@/components/ui/Modal";
-import { StandingsTable } from "@/components/features/league/StandingsTable";
 import { TopListTable } from "@/components/features/league/TopListTable";
 import { ROUTES } from "@/constants/routes";
 import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS } from "@/constants/game";
@@ -92,7 +91,6 @@ export default function SimulationPage() {
 
   const [visibleCount, setVisibleCount] = useState(0);
   const [phase, setPhase] = useState<"narration" | "stats">("narration");
-  const [showStandings, setShowStandings] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [reconnecting, setReconnecting] = useState(true);
   const navigatedRef = useRef(false);
@@ -195,7 +193,6 @@ export default function SimulationPage() {
 
     (async () => {
       await new Promise((r) => setTimeout(r, LIVE_MATCH_CONFIG.STATS_SECONDS * 1000));
-      setShowStandings(false);
       setShowStats(false);
       if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
@@ -243,6 +240,7 @@ export default function SimulationPage() {
   const opponentScore = isHome ? userMatch.awayScore : userMatch.homeScore;
   const opponentName = isHome ? userMatch.awayTeamName : userMatch.homeTeamName;
   const userGroup = isCup && cupState ? cupState.groups.find((g) => g.teamIds.includes(userTeam.id)) ?? null : null;
+  const statsStandings = isCup ? (userGroup ? computeGroupStandings(userGroup, teams, matches) : []) : computeStandings(teams, matches, userTeam.id);
   const userBoost = (isHome ? userMatch.homeBoost : userMatch.awayBoost) as Boost | undefined;
   const opponentBoost = (isHome ? userMatch.awayBoost : userMatch.homeBoost) as Boost | undefined;
 
@@ -347,52 +345,70 @@ export default function SimulationPage() {
               <p className="mb-3 text-center font-sans text-sm font-semibold text-gold">🏆 Campeão da Copa!</p>
             )}
 
-            {!isCup && (
-              <button onClick={() => setShowStandings(true)} className="block w-full text-center font-sans text-sm text-gold">
-                Ver classificação
-              </button>
-            )}
-            {isCup && cupState?.phase === "groups" && cupOutcome === "advance" && (
-              <button onClick={() => setShowStandings(true)} className="block w-full text-center font-sans text-sm text-gold">
-                Ver Classificação dos Grupos
-              </button>
-            )}
-            <button onClick={() => setShowStats(true)} className="mt-2 block w-full text-center font-sans text-sm text-teal-bright">
-              📊 Ver Estatísticas da Competição
+            <button onClick={() => setShowStats(true)} className="block w-full text-center font-sans text-sm text-gold">
+              📊 Estatísticas da Competição
             </button>
           </div>
         )}
       </div>
 
-      {!isCup && (
-        <Modal isOpen={showStandings} onClose={() => setShowStandings(false)} title="Classificação">
-          <StandingsTable standings={computeStandings(teams, matches, userTeam.id)} />
-        </Modal>
-      )}
-
-      {isCup && userGroup && (
-        <Modal isOpen={showStandings} onClose={() => setShowStandings(false)} title={userGroup.name}>
-          <StandingsTable standings={computeGroupStandings(userGroup, teams, matches)} />
-        </Modal>
-      )}
-
-      <Modal isOpen={showStats} onClose={() => setShowStats(false)} title="📊 Estatísticas da Competição">
-        <div className="space-y-5">
-          <div>
-            <h3 className="mb-2 font-sans text-sm font-semibold text-gold">🏆 Artilharia</h3>
-            <TopListTable
-              valueLabel="Gols"
-              emptyLabel="Ainda sem gols registrados nesta competição."
-              rows={computeTopScorers(matches, 10).map((s) => ({ playerName: s.playerName, teamName: s.teamName, value: s.goals }))}
-            />
+      <Modal
+        isOpen={showStats}
+        onClose={() => setShowStats(false)}
+        title="📊 Estatísticas da Competição"
+        className="max-w-[380px] p-4 sm:max-w-md sm:p-6"
+      >
+        <div className="grid grid-cols-[1.15fr_1fr] gap-2.5">
+          {/* Classificação — coluna maior, à esquerda (mesmos dados já usados na tela de classificação) */}
+          <div className="flex max-h-[65vh] flex-col overflow-hidden rounded-card border border-border-subtle bg-surface">
+            <p className="shrink-0 border-b border-border-subtle bg-surface-elevated px-2 py-1.5 text-center font-sans text-[9px] font-semibold uppercase tracking-wide text-text-tertiary">
+              Classificação
+            </p>
+            <div className="overflow-y-auto">
+              <table className="w-full font-mono text-[10px]">
+                <tbody>
+                  {statsStandings.length === 0 ? (
+                    <tr>
+                      <td className="px-2 py-3 text-center text-[10px] text-text-tertiary">Sem classificação nesta fase.</td>
+                    </tr>
+                  ) : (
+                    statsStandings.map((row, i) => (
+                      <tr key={row.teamId} className={cn("border-b border-border-subtle/40 last:border-0", row.isUserTeam && "bg-gold/10")}>
+                        <td className="px-1.5 py-1 text-text-tertiary">{i + 1}</td>
+                        <td className={cn("truncate px-1 py-1", row.isUserTeam ? "font-semibold text-gold" : "text-text-secondary")}>
+                          {row.teamName}
+                        </td>
+                        <td className={cn("px-1.5 py-1 text-right font-bold", row.isUserTeam ? "text-gold" : "text-text-primary")}>
+                          {row.points}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div>
-            <h3 className="mb-2 font-sans text-sm font-semibold text-teal-bright">🎯 Assistências</h3>
-            <TopListTable
-              valueLabel="Assist."
-              emptyLabel="Ainda sem assistências registradas nesta competição."
-              rows={computeTopAssists(matches, 10).map((a) => ({ playerName: a.playerName, teamName: a.teamName, value: a.assists }))}
-            />
+
+          {/* Artilharia + Assistências — empilhadas à direita, top 5 cada */}
+          <div className="flex flex-col gap-2.5">
+            <div>
+              <p className="mb-1 text-center font-sans text-[9px] font-semibold uppercase tracking-wide text-text-tertiary">🥇 Artilheiros</p>
+              <TopListTable
+                compact
+                valueLabel="Gols"
+                emptyLabel="Sem gols ainda."
+                rows={computeTopScorers(matches, 5).map((s) => ({ playerName: s.playerName, teamName: s.teamName, value: s.goals }))}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-center font-sans text-[9px] font-semibold uppercase tracking-wide text-text-tertiary">🎯 Assistentes</p>
+              <TopListTable
+                compact
+                valueLabel="Assist."
+                emptyLabel="Sem assistências ainda."
+                rows={computeTopAssists(matches, 5).map((a) => ({ playerName: a.playerName, teamName: a.teamName, value: a.assists }))}
+              />
+            </div>
           </div>
         </div>
       </Modal>

@@ -22,6 +22,7 @@ export const LEAGUE_CONFIG = {
 
 export const PRE_MATCH_CONFIG = {
   TIMER_SECONDS: 10,
+  MULTIPLAYER_TIMER_SECONDS: 5,
   STARTERS_COUNT: 11,
 } as const;
 

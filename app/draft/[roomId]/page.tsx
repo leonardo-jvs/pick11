@@ -87,6 +87,7 @@ export default function DraftPage() {
   const turnParticipant = room?.participants.find((p) => p.id === currentTurn?.participantId) ?? null;
   const selfParticipant = room?.participants.find((p) => p.id === selfParticipantId) ?? null;
   const hideOverall = room?.draftMode === "hidden";
+  const isSolo = !!room && room.maxPlayers === 1;
 
   // Marca, localmente e sem depender de nenhum dado vindo do servidor/Timer,
   // o instante em que ESTE cliente percebeu que o turno atual começou. É a
@@ -311,10 +312,14 @@ export default function DraftPage() {
               <div className="flex items-center justify-between gap-2">
                 <p className="truncate font-sans text-[11px] text-text-tertiary">
                   Rodada {Math.floor(currentTurn.index / draftState.order.length) + 1}
-                  {" · "}
-                  <span className={isSelfTurn ? "font-semibold text-gold" : "text-text-secondary"}>
-                    {isSelfTurn ? "Sua vez. Você tem 10 segundos para escolher." : "Aguardando o oponente escolher..."}
-                  </span>
+                  {!isSolo && (
+                    <>
+                      {" · "}
+                      <span className={isSelfTurn ? "font-semibold text-gold" : "text-text-secondary"}>
+                        {isSelfTurn ? "Sua vez. Você tem 10 segundos para escolher." : "Aguardando o oponente escolher..."}
+                      </span>
+                    </>
+                  )}
                 </p>
                 {/* O Timer continua montado (roda exatamente os mesmos 10s
                     internamente, disparando o auto-pick normalmente) — só

@@ -15,6 +15,16 @@ import { PRE_MATCH_CONFIG } from "@/constants/game";
 
 const HOME_ADVANTAGE = 1;
 
+/**
+ * Prazo da Pré-Partida: 10s no Singleplayer (inalterado), 5s no Multiplayer.
+ * Um único lugar decide isso — reutilizado em todo cálculo de round_deadline
+ * deste arquivo, pra nunca divergir entre os pontos de geração/avanço de rodada.
+ */
+function computePreMatchDeadline(isMultiplayer: boolean): string {
+  const seconds = isMultiplayer ? PRE_MATCH_CONFIG.MULTIPLAYER_TIMER_SECONDS : PRE_MATCH_CONFIG.TIMER_SECONDS;
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
 export type RoundReadiness = Record<string, { ready: boolean; boost: string }>;
 
 export interface CompetitionSnapshot {
@@ -129,7 +139,7 @@ export async function startCompetitionOnServer(room: Room, draftState: DraftStat
     current_round: 1,
     phase: "pre_match",
     round_readiness: {},
-    round_deadline: new Date(Date.now() + PRE_MATCH_CONFIG.TIMER_SECONDS * 1000).toISOString(),
+    round_deadline: computePreMatchDeadline(humanTeams.length > 1),
     version: 0,
   });
   // Código 23505 = violação de chave única — outro cliente (ou uma tentativa
@@ -196,7 +206,7 @@ export async function refreshRoundDeadlineIfStale(roomId: string, snapshot: Comp
   const deadlineMs = snapshot.roundDeadline ? new Date(snapshot.roundDeadline).getTime() : 0;
   const remainingMs = deadlineMs - Date.now();
   if (remainingMs > 2000) return; // ainda sobra tempo de verdade, nada a fazer
-  const freshDeadline = new Date(Date.now() + PRE_MATCH_CONFIG.TIMER_SECONDS * 1000).toISOString();
+  const freshDeadline = computePreMatchDeadline(snapshot.teams.filter((t) => t.isHuman).length > 1);
   try {
     await submitCompetitionState(roomId, snapshot.version, { round_deadline: freshDeadline });
   } catch {
@@ -321,7 +331,7 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
         cup_state: nextCupState,
         matches: allMatches,
         round_readiness: {},
-        round_deadline: new Date(Date.now() + PRE_MATCH_CONFIG.TIMER_SECONDS * 1000).toISOString(),
+        round_deadline: computePreMatchDeadline(teams.filter((t) => t.isHuman).length > 1),
       });
     }
 
@@ -359,7 +369,7 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
         matches: [...snapshot.matches, ...results],
         phase: nextPhase === "finished" ? "finished" : "pre_match",
         round_readiness: {},
-        round_deadline: nextPhase === "finished" ? null : new Date(Date.now() + PRE_MATCH_CONFIG.TIMER_SECONDS * 1000).toISOString(),
+        round_deadline: nextPhase === "finished" ? null : computePreMatchDeadline(teams.filter((t) => t.isHuman).length > 1),
       });
     }
 
@@ -389,7 +399,7 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
     current_round: isLastRound ? snapshot.currentRound : snapshot.currentRound + 1,
     phase: isLastRound ? "finished" : "pre_match",
     round_readiness: {},
-    round_deadline: isLastRound ? null : new Date(Date.now() + PRE_MATCH_CONFIG.TIMER_SECONDS * 1000).toISOString(),
+    round_deadline: isLastRound ? null : computePreMatchDeadline(teams.filter((t) => t.isHuman).length > 1),
   });
 }
 
