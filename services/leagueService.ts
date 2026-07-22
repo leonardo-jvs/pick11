@@ -4,7 +4,7 @@ import { Match, MatchEvent, MatchStatLine, StandingRow, TopScorer, TopAssist, Be
 import { BOT_CLUB_NAMES } from "@/mocks/clubs";
 import { FORMATIONS, LEAGUE_CONFIG, PLAY_STYLES } from "@/constants/game";
 import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
-import { buildStartersForFormation, buildReserveSquad } from "@/services/squadBuilderService";
+import { buildBotStartersForFormation, buildBotReserveSquad, BOT_PERSONALITIES } from "@/services/squadBuilderService";
 import { createFillerNameGuard } from "@/mocks/syntheticPlayers";
 import { delay, generateId, randomBetween } from "@/lib/delay";
 
@@ -42,20 +42,24 @@ export async function generateBotSquads(
   const botCount = Math.max(0, targetTotalTeams - humanTeamsCount);
   if (botCount === 0) return [];
 
-  // Embaralha o pool restante — cada bot pega o melhor disponível por posição
-  // (respeitando a formação sorteada), na ordem em que os clubes são criados.
+  // Embaralha o pool restante — cada bot monta o elenco com aleatoriedade
+  // ponderada e uma personalidade própria (ver squadBuilderService), em vez
+  // de sempre pegar o melhor disponível — evita que praticamente todo bot
+  // termine com uma "seleção mundial".
   let pool = shuffle(remainingPool);
   const bots: Team[] = [];
 
   for (let i = 0; i < botCount; i++) {
     const clubName = `BOT ${BOT_CLUB_NAMES[i % BOT_CLUB_NAMES.length]}`;
     const tactics = randomTactics();
+    const personality = BOT_PERSONALITIES[randomBetween(0, BOT_PERSONALITIES.length - 1)];
 
-    const { starters, remainingPool: poolAfterStarters } = buildStartersForFormation(pool, tactics.formation, clubName, usedNames);
+    const { starters, remainingPool: poolAfterStarters } = buildBotStartersForFormation(pool, tactics.formation, clubName, usedNames, personality);
     let reserves: Player[] = [];
     pool = poolAfterStarters;
     if (includeReserves) {
-      const result = buildReserveSquad(poolAfterStarters, clubName, usedNames);
+      const eliteFromStarters = starters.filter((p) => p.overall >= 90).length;
+      const result = buildBotReserveSquad(poolAfterStarters, clubName, usedNames, personality, eliteFromStarters);
       reserves = result.reserves;
       pool = result.remainingPool;
     }

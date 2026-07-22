@@ -9,11 +9,11 @@ import { Player, PlayerCategory } from "@/types/player";
  * segunda trava de segurança caso o módulo seja reativado no futuro.
  */
 export const CARD_CATEGORY_WEIGHTS: Record<PlayerCategory, number> = {
-  legend: 0.03,
-  prime: 0.08,
-  veteran: 0.09,
+  legend: 0.04,
+  prime: 0.1,
+  veteran: 0.11,
   proclubs: 0,
-  common: 0.8,
+  common: 0.75,
 };
 
 function rollCategory(): PlayerCategory {
