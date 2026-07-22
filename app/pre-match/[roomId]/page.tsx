@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Timer } from "@/components/ui/Timer";
 import { FormationPitch } from "@/components/features/league/FormationPitch";
 import { ROUTES } from "@/constants/routes";
-import { SELECTABLE_BOOSTS, BOOST_USES, BOOST_LABELS, BOOST_POSITION_TARGETS, BOOST_OVERALL_BONUS, PRE_MATCH_CONFIG, LEAGUE_CONFIG } from "@/constants/game";
+import { SELECTABLE_BOOSTS, BOOST_USES, BOOST_LABELS, BOOST_POSITION_TARGETS, BOOST_OVERALL_BONUS, PRE_MATCH_CONFIG, LEAGUE_CONFIG, LEAGUE_KNOCKOUT_CONFIG } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings } from "@/services/leagueService";
 import { getCurrentFixtureForTeam, getPhaseLabel, computeGroupStandings } from "@/services/cupService";
@@ -62,7 +62,14 @@ export default function PreMatchPage() {
   const competitionDeadline = useSessionStore((s) => s.competitionDeadline);
   const userTeam = useSessionStore((s) => s.userTeam());
 
-  const isCup = room?.gameMode === "cup";
+  const isLeagueKnockout = room?.gameMode === "league_knockout";
+  // Fase de mata-mata de verdade: Copa pura sempre, ou Liga + Mata-Mata só
+  // depois que a fase de liga termina e o servidor transiciona pro cupState
+  // (mesmo bloco de simulação da Copa assume dali em diante). Comportamento
+  // (busca de adversário, rótulos, chaveamento) deve seguir esse sinal, não
+  // o `isCup` literal — assim a fase de mata-mata do novo modo se comporta
+  // exatamente igual à Copa, sem nenhuma lógica duplicada.
+  const inKnockoutStage = !!cupState;
   // Singleplayer é sempre sala de 1 jogador — mantém o fluxo antigo (botão
   // "Iniciar Partida"). Multiplayer nunca mostra esse botão (item 6).
   const isSolo = !!room && room.maxPlayers === 1;
@@ -247,18 +254,22 @@ export default function PreMatchPage() {
   // partida (acima) levar o jogador pra Simulação primeiro, como sempre.
   useEffect(() => {
     if (!room || teams.length === 0) return;
-    if (isCup) {
+    if (inKnockoutStage) {
       if (cupState?.phase === "finished") {
         const myMatches = userTeam ? matches.filter((m) => m.homeTeamId === userTeam.id || m.awayTeamId === userTeam.id) : [];
         const hasUnseenMatch = myMatchCountRef.current !== null && myMatches.length > myMatchCountRef.current;
         if (!hasUnseenMatch) router.push(ROUTES.cupFinal(room.id));
       }
-    } else if (schedule.length > 0) {
+    } else if (schedule.length > 0 && !isLeagueKnockout) {
+      // Liga normal só — o Liga + Mata-Mata nunca cai aqui: o servidor já
+      // transiciona pro cupState na mesma escrita que fecha a última rodada
+      // da fase de liga, então `inKnockoutStage` vira true antes que essa
+      // checagem de "passou da última rodada" chegasse a disparar.
       const totalRounds = Math.max(...schedule.map((f) => f.round));
       if (currentRound > totalRounds) router.push(ROUTES.leagueFinal(room.id));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.id, teams.length, isCup, cupState?.phase, schedule, currentRound, matches, userTeam?.id]);
+  }, [room?.id, teams.length, inKnockoutStage, isLeagueKnockout, cupState?.phase, schedule, currentRound, matches, userTeam?.id]);
 
   if (reconnecting) {
     return (
@@ -284,7 +295,7 @@ export default function PreMatchPage() {
   let cupFixtureInfo: string | null = null;
   let groupStandingPosition: number | null = null;
 
-  if (isCup && cupState) {
+  if (inKnockoutStage && cupState) {
     const fixture = getCurrentFixtureForTeam(cupState, userTeam.id);
     opponent = fixture ? teams.find((t) => t.id === fixture.opponentId) ?? null : null;
     isHome = fixture?.isHome ?? false;
@@ -382,13 +393,15 @@ export default function PreMatchPage() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <p className="font-sans text-xs text-text-tertiary">
-              {isCup ? cupFixtureInfo : `Rodada ${currentRound} de ${LEAGUE_CONFIG.TOTAL_ROUNDS}`}
+              {inKnockoutStage
+                ? cupFixtureInfo
+                : `Rodada ${currentRound} de ${isLeagueKnockout ? LEAGUE_KNOCKOUT_CONFIG.TOTAL_LEAGUE_ROUNDS : LEAGUE_CONFIG.TOTAL_ROUNDS}`}
             </p>
             <h1 className="font-display text-2xl tracking-wide text-text-primary">
               {userTeam.clubName} <span className="text-text-tertiary">{isHome ? "🏠" : "✈️"}</span>{" "}
               {opponent?.clubName ?? <span className="text-text-tertiary">Aguardando confronto...</span>}
             </h1>
-            {isCup && cupState && cupState.phase !== "groups" && (
+            {inKnockoutStage && cupState && cupState.phase !== "groups" && (
               <button
                 onClick={() => router.push(ROUTES.cupBracket(room.id))}
                 className="mt-1 flex items-center gap-1 font-sans text-[11px] text-teal-bright hover:underline"
@@ -414,15 +427,15 @@ export default function PreMatchPage() {
 
         <div className="mb-4 grid grid-cols-4 gap-2">
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">{isCup ? "Fase" : "Rodada"}</p>
+            <p className="font-sans text-[10px] text-text-tertiary">{inKnockoutStage ? "Fase" : "Rodada"}</p>
             <p className="font-display text-lg leading-tight text-text-primary">
-              {isCup ? (cupState ? getPhaseLabel(cupState.phase) : "—") : currentRound}
+              {inKnockoutStage ? (cupState ? getPhaseLabel(cupState.phase) : "—") : currentRound}
             </p>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">{isCup && cupState?.phase === "groups" ? "No grupo" : "Classificação"}</p>
+            <p className="font-sans text-[10px] text-text-tertiary">{inKnockoutStage && cupState?.phase === "groups" ? "No grupo" : "Classificação"}</p>
             <p className="font-display text-2xl text-teal-bright">
-              {isCup ? (cupState?.phase === "groups" ? (groupStandingPosition ? `${groupStandingPosition}º` : "—") : "—") : `${position}º`}
+              {inKnockoutStage ? (cupState?.phase === "groups" ? (groupStandingPosition ? `${groupStandingPosition}º` : "—") : "—") : `${position}º`}
             </p>
           </div>
           <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">

@@ -13,7 +13,7 @@ import { ensureAnonymousSession } from "@/lib/supabase/auth";
 import { useCompetitionRealtime } from "@/hooks/useCompetitionRealtime";
 import { toast } from "@/store/toastStore";
 import { ROUTES } from "@/constants/routes";
-import { LEAGUE_CONFIG } from "@/constants/game";
+import { LEAGUE_CONFIG, LEAGUE_KNOCKOUT_CONFIG } from "@/constants/game";
 
 export default function StandingsPage() {
   const router = useRouter();
@@ -82,6 +82,7 @@ export default function StandingsPage() {
 
   const standings = computeStandings(teams, matches, userTeam.id);
   const userPosition = standings.findIndex((s) => s.isUserTeam) + 1;
+  const totalRoundsForDisplay = room?.gameMode === "league_knockout" ? LEAGUE_KNOCKOUT_CONFIG.TOTAL_LEAGUE_ROUNDS : LEAGUE_CONFIG.TOTAL_ROUNDS;
 
   return (
     <Screen>
@@ -97,7 +98,7 @@ export default function StandingsPage() {
         <div>
           <h1 className="font-display text-3xl tracking-wide text-text-primary">Classificação</h1>
           <p className="font-sans text-xs text-text-tertiary">
-            Rodada {Math.min(currentRound, LEAGUE_CONFIG.TOTAL_ROUNDS)} de {LEAGUE_CONFIG.TOTAL_ROUNDS}
+            Rodada {Math.min(currentRound, totalRoundsForDisplay)} de {totalRoundsForDisplay}
           </p>
         </div>
         <div className="text-right">

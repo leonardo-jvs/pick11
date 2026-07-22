@@ -5,8 +5,8 @@ export type RoomStatus = "lobby" | "drafting" | "generating" | "in_league" | "in
 /** visible = Over Visível (padrão) | hidden = Over Oculto — definido pelo admin antes do Draft */
 export type DraftMode = "visible" | "hidden";
 
-/** league = temporada completa (38 rodadas) | cup = Copa mata-mata curta */
-export type GameMode = "league" | "cup";
+/** league = temporada completa (38 rodadas) | cup = Copa mata-mata curta | league_knockout = Liga (18 rodadas, 10 times) + mata-mata (semifinal/final) */
+export type GameMode = "league" | "cup" | "league_knockout";
 
 export interface Room {
   id: string;

@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings, computeTopScorers, computeBestDefenses } from "@/services/leagueService";
+import { getPhaseLabel } from "@/services/cupService";
 import { resetCompetition } from "@/services/competitionSyncService";
 import { fetchRoom } from "@/services/roomService";
 import { ensureAnonymousSession } from "@/lib/supabase/auth";
 import { useRoomRealtime } from "@/hooks/useRoomRealtime";
 import { toast } from "@/store/toastStore";
 import { cn } from "@/lib/utils";
+import { LEAGUE_KNOCKOUT_CONFIG } from "@/constants/game";
 
 export default function LeagueFinalPage() {
   const router = useRouter();
@@ -23,6 +25,7 @@ export default function LeagueFinalPage() {
   const setRoom = useSessionStore((s) => s.setRoom);
   const teams = useSessionStore((s) => s.teams);
   const matches = useSessionStore((s) => s.matches);
+  const cupState = useSessionStore((s) => s.cupState);
   const selfParticipantId = useSessionStore((s) => s.selfParticipantId);
   const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const userTeam = useSessionStore((s) => s.userTeam());
@@ -32,6 +35,7 @@ export default function LeagueFinalPage() {
 
   const isHost = !!room && room.hostId === selfParticipantId;
   const isSolo = !!room && room.maxPlayers === 1;
+  const isLeagueKnockout = room?.gameMode === "league_knockout";
 
   // Reconexão: sem isso, um F5 nesta tela deixava `selfParticipantId` vazio,
   // e o próprio host deixava de ver o botão "Nova Liga" (isHost calculava
@@ -98,16 +102,54 @@ export default function LeagueFinalPage() {
   }
 
   const standings = computeStandings(teams, matches, userTeam.id);
-  const champion = standings[0];
-  const isChampion = champion?.isUserTeam;
+  const relegationCount = isLeagueKnockout ? LEAGUE_KNOCKOUT_CONFIG.RELEGATION_COUNT : 4;
   const userPosition = standings.findIndex((s) => s.teamId === userTeam.id) + 1;
   const topScorers = computeTopScorers(matches, 1);
   const bestDefenses = computeBestDefenses(standings, 1);
-  const relegated = standings.slice(-4);
-  const isRelegated = userPosition > standings.length - 4;
+  const relegated = standings.slice(-relegationCount);
+  const isRelegated = userPosition > standings.length - relegationCount;
 
-  const campaignColor = isChampion ? "text-gold" : userPosition <= 4 ? "text-success" : isRelegated ? "text-danger" : "text-text-primary";
-  const campaignLabel = isChampion ? "Campeão da temporada!" : userPosition <= 4 ? "Classificação continental" : isRelegated ? "Rebaixado" : "Temporada encerrada";
+  // Liga + Mata-Mata: o campeão é exclusivamente quem vence a Final do
+  // mata-mata — o 1º colocado da fase de Liga NÃO é considerado campeão. A
+  // fase de Liga só define classificação, confrontos da semifinal e
+  // rebaixamento (ver simulateRoundOnServer). Liga normal nunca tem
+  // `cupState`, então cai sempre no comportamento de sempre (1º da tabela).
+  const finalMatch = isLeagueKnockout ? cupState?.knockout.find((m) => m.phase === "final") ?? null : null;
+  const knockoutOngoing = isLeagueKnockout && cupState?.phase !== "finished";
+  const championTeamId = isLeagueKnockout ? finalMatch?.winnerId ?? null : standings[0]?.teamId ?? null;
+  const championTeam = championTeamId ? teams.find((t) => t.id === championTeamId) ?? null : null;
+  const championPoints = championTeamId ? standings.find((s) => s.teamId === championTeamId)?.points ?? null : null;
+  const isChampion = isLeagueKnockout ? finalMatch?.winnerId === userTeam.id : standings[0]?.isUserTeam;
+
+  // Campanha do usuário no mata-mata (se aplicável) — mesmo padrão usado em
+  // cup-final: a última entrada do chaveamento envolvendo o time do usuário.
+  const userKnockoutMatches = isLeagueKnockout && cupState ? cupState.knockout.filter((m) => m.homeId === userTeam.id || m.awayId === userTeam.id) : [];
+  const userLastKnockoutMatch = userKnockoutMatches[userKnockoutMatches.length - 1] ?? null;
+  const qualifiedForKnockout = isLeagueKnockout ? userPosition <= LEAGUE_KNOCKOUT_CONFIG.QUALIFIERS : false;
+
+  let campaignColor = "text-text-primary";
+  let campaignLabel = "Temporada encerrada";
+  if (isLeagueKnockout) {
+    if (isChampion) {
+      campaignColor = "text-gold";
+      campaignLabel = "Campeão da temporada!";
+    } else if (isRelegated) {
+      campaignColor = "text-danger";
+      campaignLabel = "Rebaixado";
+    } else if (userLastKnockoutMatch?.phase === "final") {
+      campaignColor = "text-teal-bright";
+      campaignLabel = "Vice-campeão";
+    } else if (userLastKnockoutMatch?.phase === "semifinal") {
+      campaignColor = "text-teal-bright";
+      campaignLabel = "Eliminado na semifinal";
+    } else if (qualifiedForKnockout) {
+      campaignColor = "text-teal-bright";
+      campaignLabel = knockoutOngoing ? "Classificado pro mata-mata" : "Temporada encerrada";
+    }
+  } else {
+    campaignColor = isChampion ? "text-gold" : userPosition <= 4 ? "text-success" : isRelegated ? "text-danger" : "text-text-primary";
+    campaignLabel = isChampion ? "Campeão da temporada!" : userPosition <= 4 ? "Classificação continental" : isRelegated ? "Rebaixado" : "Temporada encerrada";
+  }
 
   function playAgain() {
     reset();
@@ -129,9 +171,16 @@ export default function LeagueFinalPage() {
           transition={{ delay: 0.15 }}
           className="mt-6 rounded-card border border-gold/40 bg-gradient-to-b from-gold/15 via-surface to-surface p-5 shadow-glow-gold"
         >
-          <p className="font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Campeão</p>
-          <p className="font-display text-3xl text-gold">{champion?.teamName ?? "—"}</p>
-          <p className="font-mono text-xs text-text-tertiary">{champion?.points ?? 0} pontos</p>
+          <p className="font-sans text-[10px] uppercase tracking-wide text-text-tertiary">
+            {knockoutOngoing ? "Mata-mata em andamento" : "Campeão"}
+          </p>
+          <p className="font-display text-3xl text-gold">{knockoutOngoing ? getPhaseLabel(cupState!.phase) : championTeam?.clubName ?? "—"}</p>
+          {!knockoutOngoing && !isLeagueKnockout && <p className="font-mono text-xs text-text-tertiary">{championPoints ?? 0} pontos</p>}
+          {!knockoutOngoing && isLeagueKnockout && finalMatch?.wentToPenalties && finalMatch.penaltyScore && (
+            <p className="font-mono text-xs text-teal-bright">
+              Nos pênaltis: {finalMatch.penaltyScore[0]} x {finalMatch.penaltyScore[1]}
+            </p>
+          )}
         </motion.div>
 
         <div className="mt-4 rounded-card border border-border-subtle bg-surface p-4">

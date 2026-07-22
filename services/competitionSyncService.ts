@@ -5,13 +5,13 @@ import { DraftState } from "@/types/draft";
 import { CupState } from "@/types/cup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getSquadForParticipant, assignReservesToHumans, getDraftFillerNames } from "@/services/draftService";
-import { generateBotSquads, generateSchedule, simulateMatch } from "@/services/leagueService";
+import { generateBotSquads, generateSchedule, simulateMatch, computeStandings } from "@/services/leagueService";
 import { determineCupTier, initCupState, getQualifiedTeamIds, buildInitialBracket, advancePhaseIfComplete, resolvePenalties } from "@/services/cupService";
 import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
 import { applyBoost } from "@/services/matchPrepService";
 import { createFillerNameGuard } from "@/mocks/syntheticPlayers";
 import { generateId, randomBetween } from "@/lib/delay";
-import { PRE_MATCH_CONFIG } from "@/constants/game";
+import { PRE_MATCH_CONFIG, LEAGUE_KNOCKOUT_CONFIG } from "@/constants/game";
 
 const HOME_ADVANTAGE = 1;
 
@@ -72,6 +72,7 @@ function mapRow(row: {
 export async function startCompetitionOnServer(room: Room, draftState: DraftState): Promise<void> {
   const supabase = getSupabaseClient();
   const isCup = room.gameMode === "cup";
+  const isLeagueKnockout = room.gameMode === "league_knockout";
 
   // Idempotência: se a competição já existe (ex: uma tentativa anterior
   // conseguiu criar o registro mas falhou antes de atualizar o status da
@@ -123,10 +124,17 @@ export async function startCompetitionOnServer(room: Room, draftState: DraftStat
     };
   });
 
-  const targetTotalTeams = isCup ? determineCupTier(humanTeams.length).totalTeams : undefined;
+  const targetTotalTeams = isCup
+    ? determineCupTier(humanTeams.length).totalTeams
+    : isLeagueKnockout
+      ? LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS
+      : undefined;
   const botTeams = await generateBotSquads(remainingPool, humanTeams.length, usedNames, targetTotalTeams, !isCup);
   const allTeams = [...humanTeams, ...botTeams];
 
+  // generateSchedule já produz exatamente 18 rodadas quando allTeams.length
+  // é 10 (turno+returno = 2*(n-1)) — nenhuma lógica nova de calendário
+  // necessária pro Liga + Mata-Mata, é a mesma função da Liga normal.
   const schedule = isCup ? null : generateSchedule(allTeams.map((t) => t.id));
   const cupState = isCup ? initCupState(allTeams.map((t) => t.id), humanTeams.length) : null;
 
@@ -392,10 +400,41 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
   const updatedTeams = teams.map((t) => (physicalPatches.has(t.id) ? { ...t, physical: physicalPatches.get(t.id)! } : t));
   const totalRounds = Math.max(...snapshot.schedule.map((f) => f.round));
   const isLastRound = snapshot.currentRound >= totalRounds;
+  const allMatches = [...snapshot.matches, ...results];
+
+  // "Liga + Mata-Mata": ao terminar a última rodada de uma liga de 10 times,
+  // não encerra — monta o mata-mata (1ºx4º, 2ºx3º) com os 4 primeiros e
+  // transiciona pro cupState. Dali em diante, o próprio bloco de mata-mata
+  // acima (idêntico ao da Copa) assume o resto sozinho — nenhuma lógica nova
+  // de simulação, só a transição. Liga normal (20 times) nunca passa por
+  // aqui, então seu comportamento de "encerrar ao final" continua idêntico.
+  if (isLastRound && teams.length === LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS) {
+    const standings = computeStandings(updatedTeams, allMatches, updatedTeams[0]?.id ?? "");
+    const top4Ids = standings.slice(0, LEAGUE_KNOCKOUT_CONFIG.QUALIFIERS).map((s) => s.teamId);
+    const knockout = buildInitialBracket(top4Ids, "semifinal");
+    const knockoutCupState: CupState = {
+      totalTeams: LEAGUE_KNOCKOUT_CONFIG.QUALIFIERS,
+      groupCount: 0,
+      groups: [],
+      groupFixtures: [],
+      currentGroupRound: 3,
+      phase: "semifinal",
+      knockout,
+    };
+    return submitCompetitionState(roomId, snapshot.version, {
+      teams: updatedTeams,
+      cup_state: knockoutCupState,
+      matches: allMatches,
+      current_round: snapshot.currentRound + 1,
+      phase: "pre_match",
+      round_readiness: {},
+      round_deadline: computePreMatchDeadline(teams.filter((t) => t.isHuman).length > 1),
+    });
+  }
 
   return submitCompetitionState(roomId, snapshot.version, {
     teams: updatedTeams,
-    matches: [...snapshot.matches, ...results],
+    matches: allMatches,
     current_round: isLastRound ? snapshot.currentRound : snapshot.currentRound + 1,
     phase: isLastRound ? "finished" : "pre_match",
     round_readiness: {},

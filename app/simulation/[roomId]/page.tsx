@@ -88,6 +88,11 @@ export default function SimulationPage() {
   const userTeam = useSessionStore((s) => s.userTeam());
 
   const isCup = room?.gameMode === "cup";
+  const isLeagueKnockout = room?.gameMode === "league_knockout";
+  // Mesmo sinal usado na Pré-Partida: fase de mata-mata de verdade é Copa
+  // pura sempre, ou Liga + Mata-Mata só depois que o cupState existe
+  // (transição feita pelo servidor ao fim da 18ª rodada da liga).
+  const inKnockoutStage = !!cupState;
 
   const [visibleCount, setVisibleCount] = useState(0);
   const [phase, setPhase] = useState<"narration" | "stats">("narration");
@@ -147,7 +152,7 @@ export default function SimulationPage() {
     : null;
 
   const cupOutcome: "none" | "advance" | "champion" | "eliminated" = useMemo(() => {
-    if (!isCup || !userTeam || !cupState) return "none";
+    if (!inKnockoutStage || !userTeam || !cupState) return "none";
     if (knockoutEntry) {
       if (knockoutEntry.winnerId !== userTeam.id) return "eliminated";
       return knockoutEntry.phase === "final" ? "champion" : "advance";
@@ -163,7 +168,7 @@ export default function SimulationPage() {
       return "eliminated";
     }
     return "advance";
-  }, [isCup, userTeam, cupState, knockoutEntry]);
+  }, [inKnockoutStage, userTeam, cupState, knockoutEntry]);
 
   const beats = useMemo(() => (userMatch ? buildBeats(userMatch, penaltyResult ?? undefined) : []), [userMatch, penaltyResult]);
 
@@ -194,7 +199,18 @@ export default function SimulationPage() {
     (async () => {
       await new Promise((r) => setTimeout(r, LIVE_MATCH_CONFIG.STATS_SECONDS * 1000));
       setShowStats(false);
-      if (isCup) {
+      if (isLeagueKnockout) {
+        // Liga + Mata-Mata usa a MESMA tela de encerramento da Liga normal —
+        // campeão vem do mata-mata, mas a tela é sempre leagueFinal, nunca
+        // cupFinal (ver app/league-final, que sabe distinguir os dois casos).
+        if (inKnockoutStage && (cupOutcome === "champion" || cupOutcome === "eliminated")) {
+          router.push(ROUTES.leagueFinal(room.id));
+        } else if (inKnockoutStage) {
+          router.push(ROUTES.preMatch(room.id, 1));
+        } else {
+          router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
+        }
+      } else if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
           router.push(ROUTES.cupFinal(room.id));
         } else {
@@ -206,7 +222,7 @@ export default function SimulationPage() {
         router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
       }
     })();
-  }, [phase, room, isCup, cupOutcome, userMatch, router]);
+  }, [phase, room, isCup, isLeagueKnockout, inKnockoutStage, cupOutcome, userMatch, router]);
 
   if (reconnecting) {
     return (
@@ -289,7 +305,7 @@ export default function SimulationPage() {
               return <p className={cn("mb-1 text-center font-display text-xl tracking-wide", outcomeColor)}>{outcome}</p>;
             })()}
             <p className="mb-4 text-center font-sans text-xs text-text-tertiary">
-              {isCup ? "Copa · Fim de jogo" : `Rodada ${userMatch.round} · Fim de jogo`}
+              {isCup ? "Copa · Fim de jogo" : inKnockoutStage ? "Mata-mata · Fim de jogo" : `Rodada ${userMatch.round} · Fim de jogo`}
             </p>
 
             <div className="mb-5 flex items-center justify-center gap-4 rounded-card border border-border-subtle bg-surface p-6">
@@ -338,10 +354,10 @@ export default function SimulationPage() {
               </p>
             </div>
 
-            {isCup && cupOutcome === "eliminated" && (
+            {inKnockoutStage && cupOutcome === "eliminated" && (
               <p className="mb-3 text-center font-sans text-sm font-semibold text-danger">Eliminado da Copa</p>
             )}
-            {isCup && cupOutcome === "champion" && (
+            {inKnockoutStage && cupOutcome === "champion" && (
               <p className="mb-3 text-center font-sans text-sm font-semibold text-gold">🏆 Campeão da Copa!</p>
             )}
 

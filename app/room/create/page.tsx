@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, EyeOff, Trophy, Swords } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Trophy, Swords, Layers } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -126,6 +126,22 @@ export default function CreateRoomPage() {
               </span>
               <span className="font-sans text-[10px] leading-snug text-text-tertiary">Grupos + mata-mata, rápida e direta.</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setGameMode("league_knockout")}
+              className={cn(
+                "col-span-2 flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
+                gameMode === "league_knockout" ? "border-success bg-success/10" : "border-border-subtle bg-surface hover:border-border-strong"
+              )}
+            >
+              <Layers size={18} className={gameMode === "league_knockout" ? "text-success" : "text-text-tertiary"} />
+              <span className={cn("font-sans text-xs font-semibold", gameMode === "league_knockout" ? "text-success" : "text-text-primary")}>
+                Liga + Mata-Mata
+              </span>
+              <span className="font-sans text-[10px] leading-snug text-text-tertiary">
+                10 equipes, 18 rodadas (turno e returno) e depois os 4 primeiros disputam semifinal e final.
+              </span>
+            </button>
           </div>
           {gameMode === "cup" && (
             <p className="mt-2 font-mono text-[10px] text-text-tertiary">
@@ -135,6 +151,11 @@ export default function CreateRoomPage() {
                   tier.firstKnockoutPhase === "semifinal" ? "semifinais" : "quartas de final"
                 }`;
               })()}
+            </p>
+          )}
+          {gameMode === "league_knockout" && (
+            <p className="mt-2 font-mono text-[10px] text-text-tertiary">
+              10 equipes · 18 rodadas · classificam os 4 primeiros · semifinal e final · rebaixamento dos 2 últimos
             </p>
           )}
         </div>

@@ -20,6 +20,19 @@ export const LEAGUE_CONFIG = {
   TACTICAL_ADJUSTMENT_TIMER_SECONDS: 15,
 } as const;
 
+/**
+ * "Liga + Mata-Mata" — 10 times, 18 rodadas (turno+returno), depois os 4
+ * primeiros disputam semifinal e final. Reaproveita geração de calendário
+ * (generateSchedule já produz exatamente 18 rodadas pra 10 times, sem
+ * precisar de nenhum código novo) e o chaveamento mata-mata da Copa.
+ */
+export const LEAGUE_KNOCKOUT_CONFIG = {
+  TOTAL_CLUBS: 10,
+  TOTAL_LEAGUE_ROUNDS: 18,
+  QUALIFIERS: 4,
+  RELEGATION_COUNT: 2,
+} as const;
+
 export const PRE_MATCH_CONFIG = {
   TIMER_SECONDS: 10,
   MULTIPLAYER_TIMER_SECONDS: 5,

@@ -170,7 +170,7 @@ export default function TeamPage() {
 
       {isSolo || isHost ? (
         <Button fullWidth size="lg" onClick={() => router.push(ROUTES.generatingLeague(room.id))}>
-          {room.gameMode === "cup" ? "Gerar Copa" : "Gerar Liga"}
+          {room.gameMode === "cup" ? "Gerar Copa" : room.gameMode === "league_knockout" ? "Gerar Liga + Mata-Mata" : "Gerar Liga"}
         </Button>
       ) : (
         <div className="flex flex-col items-center gap-3 rounded-card border border-border-subtle bg-surface p-5 text-center">
