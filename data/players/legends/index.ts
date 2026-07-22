@@ -10,7 +10,7 @@ import { LEGEND_PLAYERS_V2 } from "@/data/players/legends/index-v3";
 export const LEGEND_PLAYERS: Player[] = [
   // 95-96 — lendas absolutas
   { id: "legend-pele", name: "Pelé", club: "Santos", season: "1962", position: "ATA", overall: 96, attackStyle: "Posse", defenseStyle: "Pressão alta", physical: 95, category: "legend" },
-  { id: "legend-zico", name: "Zico", club: "Flamengo", season: "1981", position: "MEI", secondaryPositions: ["ATA"], overall: 96, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 92, category: "legend" },
+  { id: "legend-zico", name: "Zico", club: "Flamengo", season: "1980", position: "MEI", secondaryPositions: ["ATA"], overall: 96, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 92, category: "legend" },
   { id: "legend-garrincha", name: "Garrincha", club: "Botafogo", season: "1962", position: "ATA", secondaryPositions: ["MEI"], overall: 95, attackStyle: "Cruzamentos", defenseStyle: "Pressão alta", physical: 90, category: "legend" },
   { id: "legend-romario", name: "Romário", club: "Vasco da Gama", season: "1994", position: "ATA", overall: 95, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 88, category: "legend", athleteKey: "romario" },
   { id: "legend-ronaldofenomeno", name: "Ronaldo Fenômeno", club: "Cruzeiro", season: "1997", position: "ATA", overall: 95, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 91, category: "legend", athleteKey: "ronaldofenomeno" },
@@ -37,7 +37,7 @@ export const LEGEND_PLAYERS: Player[] = [
   // 87-88 — carreiras muito marcantes
   { id: "legend-leandro", name: "Leandro", club: "Flamengo", season: "1981", position: "LAT", overall: 88, attackStyle: "Cruzamentos", defenseStyle: "Bloco médio", physical: 85, category: "legend" },
   { id: "legend-edmundo", name: "Edmundo", club: "Vasco da Gama", season: "1998", position: "ATA", overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 84, category: "legend", athleteKey: "edmundo" },
-  { id: "legend-rai", name: "Raí", club: "São Paulo", season: "1992", position: "MEI", secondaryPositions: ["ATA"], overall: 88, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 83, category: "legend" },
+  { id: "legend-rai", name: "Raí", club: "São Paulo", season: "1993", position: "MEI", secondaryPositions: ["ATA"], overall: 88, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 83, category: "legend" },
   { id: "legend-luizao", name: "Luizão", club: "São Paulo", season: "1998", position: "ATA", overall: 87, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 85, category: "legend" },
   { id: "legend-alex", name: "Alex", club: "Cruzeiro", season: "2005", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 82, category: "legend", athleteKey: "alex" },
   { id: "legend-diegoribas", name: "Diego Ribas", club: "Flamengo", season: "2009", position: "MEI", secondaryPositions: ["ATA"], overall: 87, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 84, category: "legend", athleteKey: "diegoribas" },

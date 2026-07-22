@@ -6,6 +6,8 @@ export type DefenseStyle = "Pressão alta" | "Bloco médio" | "Linha baixa";
 
 /**
  * common = jogador atual do Brasileirão (carta padrão).
+ * kingofamerica = "Rei da América" — vencedor oficial do prêmio de melhor da
+ * América do Sul atuando por um clube brasileiro na temporada retratada.
  * prime = "Auge" — versão histórica de uma temporada marcante.
  * veteran = "Fim de Carreira" — grandes nomes já veteranos, no fim da carreira.
  * legend = "Lendária" — ídolo histórico do futebol brasileiro.
@@ -13,7 +15,7 @@ export type DefenseStyle = "Pressão alta" | "Bloco médio" | "Linha baixa";
  * (Pro Clubs está temporariamente desativado — ver data/players/proclubs/README.)
  * Ausente = tratado como "common" (retrocompatível com dados antigos/fictícios).
  */
-export type PlayerCategory = "common" | "prime" | "veteran" | "legend" | "proclubs";
+export type PlayerCategory = "common" | "kingofamerica" | "prime" | "veteran" | "legend" | "proclubs";
 
 export interface Player {
   id: string;

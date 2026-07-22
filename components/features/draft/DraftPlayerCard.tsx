@@ -69,6 +69,21 @@ const CATEGORY_THEME: Record<
     posClosed: "border-blue-300/30 bg-black/5 text-blue-950/40",
     badge: { label: "FIM DE CARREIRA", icon: <Clock size={10} />, className: "bg-blue-500/20 text-blue-700 border-blue-400/50" },
   },
+  kingofamerica: {
+    // Dourado fosco (mais escuro/discreto que o dourado vivo da Lendária) com
+    // detalhes em verde-esmeralda — prestígio histórico sem parecer superior
+    // à Lendária. Brilho mais contido também (glow menor, cor diferente).
+    cardBg: "bg-gradient-to-b from-amber-950/50 via-surface to-surface",
+    border: "border-emerald-600/50",
+    glow: "shadow-[0_0_14px_rgba(16,185,129,0.22)]",
+    nameColor: "text-amber-200",
+    secondaryText: "text-text-secondary",
+    tertiaryText: "text-text-tertiary",
+    dividerBorder: "border-emerald-700/30",
+    posOpen: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+    posClosed: "border-border-subtle bg-surface-elevated text-text-tertiary",
+    badge: { label: "REI DA AMÉRICA", icon: <Crown size={10} />, className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/50" },
+  },
   legend: {
     cardBg: "bg-legend-bg",
     border: "border-gold/60",
