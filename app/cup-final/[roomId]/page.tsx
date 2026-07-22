@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/constants/routes";
 import { useSessionStore } from "@/store/sessionStore";
 import { getPhaseLabel } from "@/services/cupService";
+import { computeTopScorers, computeBestDefenseFromMatches } from "@/services/leagueService";
 import { fetchRoom } from "@/services/roomService";
 import { ensureAnonymousSession } from "@/lib/supabase/auth";
 import { toast } from "@/store/toastStore";
@@ -23,6 +24,7 @@ export default function CupFinalPage() {
   const setSelfParticipantId = useSessionStore((s) => s.setSelfParticipantId);
   const userTeam = useSessionStore((s) => s.userTeam());
   const teams = useSessionStore((s) => s.teams);
+  const matches = useSessionStore((s) => s.matches);
   const reset = useSessionStore((s) => s.reset);
   const [reconnecting, setReconnecting] = useState(true);
 
@@ -77,6 +79,10 @@ export default function CupFinalPage() {
   const runnerUpId = isChampion && lastMatch ? (lastMatch.homeId === userTeam.id ? lastMatch.awayId : lastMatch.homeId) : null;
   const runnerUpName = runnerUpId ? teams.find((t) => t.id === runnerUpId)?.clubName ?? "—" : null;
 
+  // Estatísticas de encerramento — só aparecem aqui, na tela final da Copa.
+  const topScorer = computeTopScorers(matches, 1)[0] ?? null;
+  const bestDefense = computeBestDefenseFromMatches(matches, teams);
+
   function playAgain() {
     reset();
     router.push(ROUTES.menu);
@@ -114,6 +120,25 @@ export default function CupFinalPage() {
               <p className="mt-1 font-mono text-xs text-text-tertiary">
                 Perdeu nos pênaltis: {lastMatch.penaltyScore[0]} x {lastMatch.penaltyScore[1]}
               </p>
+            )}
+          </div>
+        )}
+
+        {(topScorer || bestDefense) && (
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {topScorer && (
+              <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
+                <p className="font-sans text-[10px] uppercase tracking-wide text-text-tertiary">🥇 Artilheiro da Competição</p>
+                <p className="mt-1 truncate font-sans text-sm font-semibold text-text-primary">{topScorer.playerName}</p>
+                <p className="font-display text-xl text-gold">{topScorer.goals} gols</p>
+              </div>
+            )}
+            {bestDefense && (
+              <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
+                <p className="font-sans text-[10px] uppercase tracking-wide text-text-tertiary">🧤 Melhor Defesa</p>
+                <p className="mt-1 truncate font-sans text-sm font-semibold text-text-primary">{bestDefense.teamName}</p>
+                <p className="font-display text-xl text-teal-bright">{bestDefense.goalsConceded} sofridos</p>
+              </div>
             )}
           </div>
         )}

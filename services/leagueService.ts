@@ -356,3 +356,25 @@ export function computeBestDefenses(standings: StandingRow[], limit = 10): BestD
     .slice(0, limit)
     .map((s) => ({ teamName: s.teamName, goalsConceded: s.goalsAgainst }));
 }
+
+/**
+ * Melhor defesa calculada direto do histórico de partidas — usado pela Copa,
+ * que (diferente da Liga) não tem uma única "classificação" cobrindo toda a
+ * competição de uma vez (grupos + mata-mata são fases separadas). Soma os
+ * gols sofridos por cada time em TODAS as partidas recebidas, sem exigir
+ * nenhuma tabela de classificação pronta.
+ */
+export function computeBestDefenseFromMatches(matches: Match[], teams: Team[]): BestDefense | null {
+  const conceded = new Map<string, number>();
+  for (const m of matches) {
+    conceded.set(m.homeTeamId, (conceded.get(m.homeTeamId) ?? 0) + m.awayScore);
+    conceded.set(m.awayTeamId, (conceded.get(m.awayTeamId) ?? 0) + m.homeScore);
+  }
+  let best: { teamId: string; goalsConceded: number } | null = null;
+  for (const [teamId, goalsConceded] of conceded) {
+    if (!best || goalsConceded < best.goalsConceded) best = { teamId, goalsConceded };
+  }
+  if (!best) return null;
+  const team = teams.find((t) => t.id === best!.teamId);
+  return { teamName: team?.clubName ?? "—", goalsConceded: best.goalsConceded };
+}

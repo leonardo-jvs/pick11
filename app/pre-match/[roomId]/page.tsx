@@ -237,16 +237,28 @@ export default function PreMatchPage() {
   // ficar preso aqui mostrando "aguardando confronto" pra sempre, porque não
   // existe mesmo nenhum próximo adversário. Vale igual pra Singleplayer e
   // Multiplayer — não é um comportamento exclusivo de nenhum dos dois.
+  //
+  // IMPORTANTE: quando a PRÓPRIA final da Copa é resolvida, `cupState.phase`
+  // vira "finished" no MESMO instante em que a partida final aparece em
+  // `matches` — os dois efeitos disparavam juntos, e este aqui vencia a
+  // corrida, mandando o jogador direto pro encerramento e pulando a tela de
+  // Simulação da final. Por isso só redireciona direto se não sobrar nenhum
+  // resultado novo/ainda não visto — se sobrar, deixa o efeito de detecção de
+  // partida (acima) levar o jogador pra Simulação primeiro, como sempre.
   useEffect(() => {
     if (!room || teams.length === 0) return;
     if (isCup) {
-      if (cupState?.phase === "finished") router.push(ROUTES.cupFinal(room.id));
+      if (cupState?.phase === "finished") {
+        const myMatches = userTeam ? matches.filter((m) => m.homeTeamId === userTeam.id || m.awayTeamId === userTeam.id) : [];
+        const hasUnseenMatch = myMatchCountRef.current !== null && myMatches.length > myMatchCountRef.current;
+        if (!hasUnseenMatch) router.push(ROUTES.cupFinal(room.id));
+      }
     } else if (schedule.length > 0) {
       const totalRounds = Math.max(...schedule.map((f) => f.round));
       if (currentRound > totalRounds) router.push(ROUTES.leagueFinal(room.id));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.id, teams.length, isCup, cupState?.phase, schedule, currentRound]);
+  }, [room?.id, teams.length, isCup, cupState?.phase, schedule, currentRound, matches, userTeam?.id]);
 
   if (reconnecting) {
     return (
