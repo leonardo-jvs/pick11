@@ -73,7 +73,7 @@ export default function MenuPage() {
   return (
     <Screen withField center>
       <div className="mb-10 flex flex-col items-center gap-1">
-        <h1 className="font-display text-5xl tracking-wide text-gold">PICK11</h1>
+        <h1 className="font-display text-5xl tracking-wide text-gold">PICK11 BETA</h1>
         <p className="font-sans text-xs uppercase tracking-[0.15em] text-text-tertiary">Menu principal</p>
       </div>
 
