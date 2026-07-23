@@ -106,8 +106,19 @@ export default function LeagueFinalPage() {
   const userPosition = standings.findIndex((s) => s.teamId === userTeam.id) + 1;
   const topScorers = computeTopScorers(matches, 1);
   const bestDefenses = computeBestDefenses(standings, 1);
-  const relegated = standings.slice(-relegationCount);
-  const isRelegated = userPosition > standings.length - relegationCount;
+
+  // Liga + Mata-Mata: o rebaixamento é decidido pela disputa contra o
+  // rebaixamento de verdade (7ºx10º, 8ºx9º) — os PERDEDORES dessas partidas
+  // caem, não simplesmente "os 2 últimos colocados por pontos" (pode ter
+  // zebra: o 7º pode perder pro 10º). Liga tradicional nunca tem `cupState`
+  // pra essa fase, então continua usando só a posição na tabela, como sempre.
+  const relegated = isLeagueKnockout && cupState
+    ? cupState.knockout
+        .filter((m) => m.phase === "relegation" && m.winnerId)
+        .map((m) => standings.find((s) => s.teamId === (m.winnerId === m.homeId ? m.awayId : m.homeId)))
+        .filter((s): s is NonNullable<typeof s> => !!s)
+    : standings.slice(-relegationCount);
+  const isRelegated = isLeagueKnockout ? relegated.some((r) => r.teamId === userTeam.id) : userPosition > standings.length - relegationCount;
 
   // Liga + Mata-Mata: o campeão é exclusivamente quem vence a Final do
   // mata-mata — o 1º colocado da fase de Liga NÃO é considerado campeão. A
@@ -210,10 +221,10 @@ export default function LeagueFinalPage() {
         <div className="mt-4 rounded-card border border-danger/30 bg-danger/5 p-4">
           <p className="mb-2 font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Rebaixados</p>
           <div className="space-y-1.5">
-            {relegated.map((row, i) => (
+            {relegated.map((row) => (
               <p key={row.teamId} className="flex items-center justify-between font-sans text-sm">
                 <span className="text-text-secondary">
-                  ⬇️ {standings.length - relegated.length + i + 1}º {row.teamName}
+                  ⬇️ {standings.findIndex((s) => s.teamId === row.teamId) + 1}º {row.teamName}
                 </span>
                 {row.isUserTeam && <span className="font-mono text-[10px] text-danger">Você</span>}
               </p>

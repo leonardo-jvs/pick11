@@ -290,16 +290,39 @@ export default function PreMatchPage() {
     );
   }
 
+  // Liga + Mata-Mata: a partir da fase de rebaixamento/mata-mata, TODOS os
+  // participantes da sala acompanham a MESMA partida decisiva, uma de cada
+  // vez — mesmo quem não está jogando nela. `decisiveMatch` é essa partida
+  // "ao vivo" agora; `isSpectating` indica que o time do usuário não é
+  // nenhum dos dois envolvidos (só está assistindo, como todos os outros
+  // fariam também quando não for a vez do time deles).
+  const decisiveMatch =
+    isLeagueKnockout && cupState?.decisiveOrder && cupState.currentDecisiveIndex !== undefined
+      ? cupState.knockout.find((m) => m.id === cupState.decisiveOrder![cupState.currentDecisiveIndex!]) ?? null
+      : null;
+  const isSpectating = !!decisiveMatch && decisiveMatch.homeId !== userTeam.id && decisiveMatch.awayId !== userTeam.id;
+  const spectatingHomeTeam = decisiveMatch ? teams.find((t) => t.id === decisiveMatch.homeId) ?? null : null;
+  const spectatingAwayTeam = decisiveMatch ? teams.find((t) => t.id === decisiveMatch.awayId) ?? null : null;
+
   let opponent: (typeof teams)[number] | null = null;
   let isHome = false;
   let cupFixtureInfo: string | null = null;
   let groupStandingPosition: number | null = null;
 
   if (inKnockoutStage && cupState) {
-    const fixture = getCurrentFixtureForTeam(cupState, userTeam.id);
-    opponent = fixture ? teams.find((t) => t.id === fixture.opponentId) ?? null : null;
-    isHome = fixture?.isHome ?? false;
-    cupFixtureInfo = fixture?.context ?? getPhaseLabel(cupState.phase);
+    if (decisiveMatch) {
+      cupFixtureInfo = getPhaseLabel(decisiveMatch.phase);
+      if (!isSpectating) {
+        const fixture = getCurrentFixtureForTeam(cupState, userTeam.id);
+        opponent = fixture ? teams.find((t) => t.id === fixture.opponentId) ?? null : null;
+        isHome = fixture?.isHome ?? false;
+      }
+    } else {
+      const fixture = getCurrentFixtureForTeam(cupState, userTeam.id);
+      opponent = fixture ? teams.find((t) => t.id === fixture.opponentId) ?? null : null;
+      isHome = fixture?.isHome ?? false;
+      cupFixtureInfo = fixture?.context ?? getPhaseLabel(cupState.phase);
+    }
     if (cupState.phase === "groups") {
       const group = cupState.groups.find((g) => g.teamIds.includes(userTeam.id));
       if (group) {
@@ -398,9 +421,20 @@ export default function PreMatchPage() {
                 : `Rodada ${currentRound} de ${isLeagueKnockout ? LEAGUE_KNOCKOUT_CONFIG.TOTAL_LEAGUE_ROUNDS : LEAGUE_CONFIG.TOTAL_ROUNDS}`}
             </p>
             <h1 className="font-display text-2xl tracking-wide text-text-primary">
-              {userTeam.clubName} <span className="text-text-tertiary">{isHome ? "🏠" : "✈️"}</span>{" "}
-              {opponent?.clubName ?? <span className="text-text-tertiary">Aguardando confronto...</span>}
+              {isSpectating ? (
+                <>
+                  {spectatingHomeTeam?.clubName ?? "—"} <span className="text-text-tertiary">×</span> {spectatingAwayTeam?.clubName ?? "—"}
+                </>
+              ) : (
+                <>
+                  {userTeam.clubName} <span className="text-text-tertiary">{isHome ? "🏠" : "✈️"}</span>{" "}
+                  {opponent?.clubName ?? <span className="text-text-tertiary">Aguardando confronto...</span>}
+                </>
+              )}
             </h1>
+            {isSpectating && (
+              <p className="mt-0.5 font-sans text-[11px] text-teal-bright">Você está assistindo — sua equipe não joga esta partida.</p>
+            )}
             {inKnockoutStage && cupState && cupState.phase !== "groups" && (
               <button
                 onClick={() => router.push(ROUTES.cupBracket(room.id))}
@@ -425,76 +459,106 @@ export default function PreMatchPage() {
 
         {!isSolo && <p className="-mt-2 mb-4 font-sans text-xs text-text-tertiary">A partida começa em 5 segundos.</p>}
 
-        <div className="mb-4 grid grid-cols-4 gap-2">
-          <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">{inKnockoutStage ? "Fase" : "Rodada"}</p>
-            <p className="font-display text-lg leading-tight text-text-primary">
-              {inKnockoutStage ? (cupState ? getPhaseLabel(cupState.phase) : "—") : currentRound}
+        {isSpectating ? (
+          <div className="mb-4 rounded-card border border-border-subtle bg-surface p-4">
+            <p className="mb-3 text-center font-sans text-[10px] uppercase tracking-wide text-text-tertiary">
+              {cupFixtureInfo ?? "Partida decisiva"}
             </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-center">
+                <p className="truncate font-sans text-sm font-semibold text-text-primary">{spectatingHomeTeam?.clubName ?? "—"}</p>
+                <p className="font-display text-2xl text-gold">{spectatingHomeTeam?.overall ?? "—"}</p>
+                <p className={cn("font-mono text-xs", getPhysicalColorClass(spectatingHomeTeam?.physical ?? 100))}>
+                  {spectatingHomeTeam?.physical ?? "—"}% físico
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="truncate font-sans text-sm font-semibold text-text-primary">{spectatingAwayTeam?.clubName ?? "—"}</p>
+                <p className="font-display text-2xl text-gold">{spectatingAwayTeam?.overall ?? "—"}</p>
+                <p className={cn("font-mono text-xs", getPhysicalColorClass(spectatingAwayTeam?.physical ?? 100))}>
+                  {spectatingAwayTeam?.physical ?? "—"}% físico
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">{inKnockoutStage && cupState?.phase === "groups" ? "No grupo" : "Classificação"}</p>
-            <p className="font-display text-2xl text-teal-bright">
-              {inKnockoutStage ? (cupState?.phase === "groups" ? (groupStandingPosition ? `${groupStandingPosition}º` : "—") : "—") : `${position}º`}
-            </p>
-          </div>
-          <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">Físico</p>
-            <p className={cn("font-display text-2xl", getPhysicalColorClass(userTeam.physical))}>{userTeam.physical}%</p>
-          </div>
-          <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
-            <p className="font-sans text-[10px] text-text-tertiary">Overall</p>
-            <p className="font-display text-2xl text-gold">{userTeam.overall}</p>
-          </div>
-        </div>
+        ) : (
+          <>
+            <div className="mb-4 grid grid-cols-4 gap-2">
+              <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
+                <p className="font-sans text-[10px] text-text-tertiary">{inKnockoutStage ? "Fase" : "Rodada"}</p>
+                <p className="font-display text-lg leading-tight text-text-primary">
+                  {inKnockoutStage ? (cupState ? getPhaseLabel(cupState.phase) : "—") : currentRound}
+                </p>
+              </div>
+              <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
+                <p className="font-sans text-[10px] text-text-tertiary">{inKnockoutStage && cupState?.phase === "groups" ? "No grupo" : "Classificação"}</p>
+                <p className="font-display text-2xl text-teal-bright">
+                  {inKnockoutStage ? (cupState?.phase === "groups" ? (groupStandingPosition ? `${groupStandingPosition}º` : "—") : "—") : `${position}º`}
+                </p>
+              </div>
+              <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
+                <p className="font-sans text-[10px] text-text-tertiary">Físico</p>
+                <p className={cn("font-display text-2xl", getPhysicalColorClass(userTeam.physical))}>{userTeam.physical}%</p>
+              </div>
+              <div className="rounded-card border border-border-subtle bg-surface p-2.5 text-center">
+                <p className="font-sans text-[10px] text-text-tertiary">Overall</p>
+                <p className="font-display text-2xl text-gold">{userTeam.overall}</p>
+              </div>
+            </div>
 
-        <p className="mb-1.5 font-sans text-xs text-text-tertiary">Escalação titular</p>
-        <div className="mb-4">
-          <FormationPitch
-            formation={userTeam.tactics.formation}
-            players={userTeam.starters}
-            tactics={userTeam.tactics}
-            boostedPositions={boostedPositions}
-            boostDelta={boostDelta}
-          />
-        </div>
+            <p className="mb-1.5 font-sans text-xs text-text-tertiary">Escalação titular</p>
+            <div className="mb-4">
+              <FormationPitch
+                formation={userTeam.tactics.formation}
+                players={userTeam.starters}
+                tactics={userTeam.tactics}
+                boostedPositions={boostedPositions}
+                boostDelta={boostDelta}
+              />
+            </div>
 
-        <div className="mb-1.5 flex items-center gap-1.5">
-          <p className="font-sans text-xs text-text-tertiary">Escolha um bônus (opcional)</p>
-          {(lockedBoost !== null || iAmReady) && <Lock size={11} className="text-text-tertiary" />}
-        </div>
-        <div className="mb-4 space-y-2">
-          {SELECTABLE_BOOSTS.map((boost) => {
-            const disabled = isBoostDisabled(boost);
-            const usesLabel = boostUsesLabel(boost);
-            const selected = lockedBoost === boost;
-            return (
-              <button
-                key={boost}
-                type="button"
-                disabled={disabled && !selected}
-                onClick={() => handleSelectBoost(boost)}
-                className={cn(
-                  "flex w-full items-start gap-3 rounded-card border px-3 py-2.5 text-left transition-colors",
-                  selected ? "border-gold bg-gold/10" : "border-border-subtle bg-surface hover:border-border-strong",
-                  disabled && !selected && "cursor-not-allowed opacity-40"
-                )}
-              >
-                <span className={cn("mt-0.5", selected ? "text-gold" : "text-text-tertiary")}>{BOOST_ICON[boost]}</span>
-                <span className="flex-1">
-                  <span className="flex items-center justify-between">
-                    <span className={cn("font-sans text-sm font-semibold", selected ? "text-gold" : "text-text-primary")}>{BOOST_LABELS[boost]}</span>
-                    {usesLabel && <span className="font-mono text-[10px] text-text-tertiary">{usesLabel}</span>}
-                  </span>
-                  <span className="mt-0.5 block font-sans text-[11px] leading-snug text-text-tertiary">{BOOST_DESCRIPTION[boost]}</span>
-                </span>
-                {selected && <Check size={16} className="mt-0.5 shrink-0 text-gold" />}
-              </button>
-            );
-          })}
-        </div>
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <p className="font-sans text-xs text-text-tertiary">Escolha um bônus (opcional)</p>
+              {(lockedBoost !== null || iAmReady) && <Lock size={11} className="text-text-tertiary" />}
+            </div>
+            <div className="mb-4 space-y-2">
+              {SELECTABLE_BOOSTS.map((boost) => {
+                const disabled = isBoostDisabled(boost);
+                const usesLabel = boostUsesLabel(boost);
+                const selected = lockedBoost === boost;
+                return (
+                  <button
+                    key={boost}
+                    type="button"
+                    disabled={disabled && !selected}
+                    onClick={() => handleSelectBoost(boost)}
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-card border px-3 py-2.5 text-left transition-colors",
+                      selected ? "border-gold bg-gold/10" : "border-border-subtle bg-surface hover:border-border-strong",
+                      disabled && !selected && "cursor-not-allowed opacity-40"
+                    )}
+                  >
+                    <span className={cn("mt-0.5", selected ? "text-gold" : "text-text-tertiary")}>{BOOST_ICON[boost]}</span>
+                    <span className="flex-1">
+                      <span className="flex items-center justify-between">
+                        <span className={cn("font-sans text-sm font-semibold", selected ? "text-gold" : "text-text-primary")}>{BOOST_LABELS[boost]}</span>
+                        {usesLabel && <span className="font-mono text-[10px] text-text-tertiary">{usesLabel}</span>}
+                      </span>
+                      <span className="mt-0.5 block font-sans text-[11px] leading-snug text-text-tertiary">{BOOST_DESCRIPTION[boost]}</span>
+                    </span>
+                    {selected && <Check size={16} className="mt-0.5 shrink-0 text-gold" />}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
 
-        {isSolo ? (
+        {isSpectating ? (
+          <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
+            <p className="font-sans text-xs text-text-secondary">A partida começa automaticamente quando o cronômetro chegar a zero.</p>
+          </div>
+        ) : isSolo ? (
           <Button fullWidth size="lg" isLoading={starting && !iAmReady} disabled={iAmReady} onClick={handleStartSolo}>
             {iAmReady ? "Aguardando..." : "Iniciar Partida"}
           </Button>

@@ -2,11 +2,11 @@ import { Room } from "@/types/room";
 import { Team, Boost } from "@/types/team";
 import { Match } from "@/types/match";
 import { DraftState } from "@/types/draft";
-import { CupState } from "@/types/cup";
+import { CupState, CupPhase, PenaltyKick } from "@/types/cup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getSquadForParticipant, assignReservesToHumans, getDraftFillerNames } from "@/services/draftService";
 import { generateBotSquads, generateSchedule, simulateMatch, computeStandings } from "@/services/leagueService";
-import { determineCupTier, initCupState, getQualifiedTeamIds, buildInitialBracket, advancePhaseIfComplete, resolvePenalties } from "@/services/cupService";
+import { determineCupTier, initCupState, getQualifiedTeamIds, buildInitialBracket, advancePhaseIfComplete, simulatePenaltyShootout } from "@/services/cupService";
 import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/compatibilityService";
 import { applyBoost } from "@/services/matchPrepService";
 import { createFillerNameGuard } from "@/mocks/syntheticPlayers";
@@ -274,10 +274,10 @@ function playFixture(round: number, home: Team, away: Team, isKnockout: boolean,
   match.homeBoost = homeBoost;
   match.awayBoost = awayBoost;
 
-  let penalties: { home: number; away: number } | undefined;
+  let penalties: { home: number; away: number; kicks: PenaltyKick[] } | undefined;
   if (isKnockout && match.homeScore === match.awayScore) {
-    const result = resolvePenalties(home, away);
-    penalties = { home: result.homeGoals, away: result.awayGoals };
+    const result = simulatePenaltyShootout(home, away);
+    penalties = { home: result.homeGoals, away: result.awayGoals, kicks: result.kicks };
   }
 
   const homePhysicalAfter = homeEff.restoresFullPhysicalAfterMatch ? 100 : Math.max(45, homeEff.physical - randomBetween(3, 8));
@@ -307,6 +307,73 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
 
   if (isCup && snapshot.cupState) {
     const cupState = snapshot.cupState;
+
+    // Liga + Mata-Mata: sequência de partidas decisivas (rebaixamento,
+    // semifinais, final), uma de cada vez, na ordem exata combinada — TODOS
+    // os participantes da sala assistem ao mesmo confronto simultaneamente,
+    // não só quem está jogando. Só existe quando `decisiveOrder` foi
+    // montado (ver a transição no final da função) — a Copa nunca preenche
+    // esse campo, então este bloco nunca roda pra ela; o restante da lógica
+    // de Copa (grupos + mata-mata em paralelo) continua abaixo, intocado.
+    if (cupState.decisiveOrder && cupState.currentDecisiveIndex !== undefined) {
+      if (cupState.currentDecisiveIndex >= cupState.decisiveOrder.length) return true; // já terminou
+
+      const currentMatchId = cupState.decisiveOrder[cupState.currentDecisiveIndex];
+      const pending = cupState.knockout.find((m) => m.id === currentMatchId);
+      if (!pending || pending.winnerId || !pending.homeId || !pending.awayId) return true;
+
+      const home = teams.find((t) => t.id === pending.homeId);
+      const away = teams.find((t) => t.id === pending.awayId);
+      if (!home || !away) return true;
+
+      const r = playFixture(900, home, away, true, snapshot.roundReadiness);
+      applyResult(r);
+      physicalPatches.set(home.id, r.homePhysicalAfter);
+      physicalPatches.set(away.id, r.awayPhysicalAfter);
+
+      const winnerId = r.penalties ? (r.penalties.home > r.penalties.away ? home.id : away.id) : r.match.homeScore > r.match.awayScore ? home.id : away.id;
+      let updatedKnockout = cupState.knockout.map((m) =>
+        m.id === pending.id
+          ? {
+              ...m,
+              matchId: r.match.id,
+              winnerId,
+              wentToPenalties: !!r.penalties,
+              penaltyScore: r.penalties ? ([r.penalties.home, r.penalties.away] as [number, number]) : undefined,
+              penaltyKicks: r.penalties?.kicks,
+            }
+          : m
+      );
+
+      // Assim que as DUAS semifinais estiverem resolvidas, preenche os
+      // classificados na Final (que já existe no chaveamento, só sem
+      // homeId/awayId até este momento) — reaproveita a mesma ideia de
+      // "preencher a próxima fase" que a Copa já usa, só que aplicada uma
+      // única vez aqui, no meio da fila sequencial.
+      if (pending.phase === "semifinal") {
+        const semis = updatedKnockout.filter((m) => m.phase === "semifinal");
+        if (semis.every((m) => m.winnerId)) {
+          const [semi1, semi2] = [...semis].sort((a, b) => a.slot - b.slot);
+          updatedKnockout = updatedKnockout.map((m) => (m.phase === "final" ? { ...m, homeId: semi1.winnerId!, awayId: semi2.winnerId! } : m));
+        }
+      }
+
+      const nextIndex = cupState.currentDecisiveIndex + 1;
+      const isLastDecisiveMatch = nextIndex >= cupState.decisiveOrder.length;
+      const nextMatch = isLastDecisiveMatch ? null : updatedKnockout.find((m) => m.id === cupState.decisiveOrder![nextIndex]);
+      const displayPhase: CupPhase = isLastDecisiveMatch ? "finished" : nextMatch?.phase ?? pending.phase;
+
+      const updatedTeams = teams.map((t) => (physicalPatches.has(t.id) ? { ...t, physical: physicalPatches.get(t.id)! } : t));
+
+      return submitCompetitionState(roomId, snapshot.version, {
+        teams: updatedTeams,
+        cup_state: { ...cupState, phase: displayPhase, knockout: updatedKnockout, currentDecisiveIndex: nextIndex },
+        matches: [...snapshot.matches, ...results],
+        phase: isLastDecisiveMatch ? "finished" : "pre_match",
+        round_readiness: {},
+        round_deadline: isLastDecisiveMatch ? null : computePreMatchDeadline(teams.filter((t) => t.isHuman).length > 1),
+      });
+    }
 
     if (cupState.phase === "groups") {
       const fixtures = cupState.groupFixtures.filter((f) => f.round === cupState.currentGroupRound);
@@ -365,6 +432,7 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
           winnerId,
           wentToPenalties: !!r.penalties,
           penaltyScore: r.penalties ? [r.penalties.home, r.penalties.away] : undefined,
+          penaltyKicks: r.penalties?.kicks,
         };
       }
 
@@ -411,15 +479,27 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
   if (isLastRound && teams.length === LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS) {
     const standings = computeStandings(updatedTeams, allMatches, updatedTeams[0]?.id ?? "");
     const top4Ids = standings.slice(0, LEAGUE_KNOCKOUT_CONFIG.QUALIFIERS).map((s) => s.teamId);
-    const knockout = buildInitialBracket(top4Ids, "semifinal");
+    // Os 4 últimos, na ordem 7º,8º,9º,10º — buildInitialBracket pareia
+    // primeiro-com-último (7ºx10º) e segundo-com-penúltimo (8ºx9º) da lista
+    // recebida, exatamente a mesma regra já usada pro chaveamento do título.
+    const bottom4Ids = standings.slice(-LEAGUE_KNOCKOUT_CONFIG.RELEGATION_COUNT * 2).map((s) => s.teamId);
+
+    const relegationMatches = buildInitialBracket(bottom4Ids, "relegation");
+    const semifinalMatches = buildInitialBracket(top4Ids, "semifinal");
+    const finalPlaceholder = { id: generateId("ko"), phase: "final" as const, slot: 0, homeId: null, awayId: null };
+
     const knockoutCupState: CupState = {
-      totalTeams: LEAGUE_KNOCKOUT_CONFIG.QUALIFIERS,
+      totalTeams: LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS,
       groupCount: 0,
       groups: [],
       groupFixtures: [],
       currentGroupRound: 3,
-      phase: "semifinal",
-      knockout,
+      // Fase "visível" inicial é a primeira da fila — a disputa contra o
+      // rebaixamento sempre acontece antes das partidas do título.
+      phase: "relegation",
+      knockout: [...relegationMatches, ...semifinalMatches, finalPlaceholder],
+      decisiveOrder: [relegationMatches[0].id, relegationMatches[1].id, semifinalMatches[0].id, semifinalMatches[1].id, finalPlaceholder.id],
+      currentDecisiveIndex: 0,
     };
     return submitCompetitionState(roomId, snapshot.version, {
       teams: updatedTeams,

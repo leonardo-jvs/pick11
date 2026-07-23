@@ -1,8 +1,9 @@
 import { Team } from "@/types/team";
+import { Player } from "@/types/player";
 import { Match, StandingRow } from "@/types/match";
-import { CupGroup, CupGroupFixture, CupKnockoutMatch, CupPhase, CupState } from "@/types/cup";
+import { CupGroup, CupGroupFixture, CupKnockoutMatch, CupPhase, CupState, PenaltyKick } from "@/types/cup";
 import { computeStandings } from "@/services/leagueService";
-import { generateId, randomBetween } from "@/lib/delay";
+import { generateId } from "@/lib/delay";
 
 /**
  * Formato adaptativo da Copa, conforme a quantidade de participantes humanos
@@ -100,7 +101,7 @@ export function getQualifiedTeamIds(groups: CupGroup[], teams: Team[], matches: 
 }
 
 /** Monta a primeira fase do mata-mata com seed padrão de chaveamento (1ºxÚltimo, protegendo os favoritos). */
-export function buildInitialBracket(seededTeamIds: string[], firstPhase: CupTier["firstKnockoutPhase"]): CupKnockoutMatch[] {
+export function buildInitialBracket(seededTeamIds: string[], firstPhase: Exclude<CupPhase, "groups" | "finished">): CupKnockoutMatch[] {
   const n = seededTeamIds.length;
   const matches: CupKnockoutMatch[] = [];
   for (let i = 0; i < n / 2; i++) {
@@ -147,26 +148,144 @@ export function advancePhaseIfComplete(knockout: CupKnockoutMatch[], phase: Excl
   return { knockout: [...knockout, ...nextMatches], nextPhase: next };
 }
 
+export interface PenaltyShootoutResult {
+  kicks: PenaltyKick[];
+  homeGoals: number;
+  awayGoals: number;
+  winnerId: string;
+}
+
 /**
- * Disputa de pênaltis simplificada: chance ponderada pelo Overall de cada
- * time, resultado sempre com um placar plausível de pênaltis (nunca empate).
+ * Escolhe o próximo cobrador entre os titulares de linha (nunca o goleiro).
+ * Prioriza fortemente quem tem maior Overall (proxy de qualidade
+ * ofensiva/finalização, já que o jogo não modela um atributo separado pra
+ * isso), com um bônus extra pra atacantes e meias — mas não é sempre
+ * literalmente o melhor: o sorteio é ponderado, então dá variedade real
+ * entre disputas. Nunca repete um jogador antes que todos os de linha já
+ * tenham cobrado pelo menos uma vez; depois disso, repetição é permitida
+ * normalmente (igual ao futebol de verdade).
  */
+function pickPenaltyKicker(team: Team, alreadyKicked: Set<string>): Player {
+  const eligible = team.starters.filter((p) => p.position !== "GOL");
+  const pool = eligible.length === 0 ? team.starters : eligible;
+  const notYetKicked = pool.filter((p) => !alreadyKicked.has(p.id));
+  const candidates = notYetKicked.length > 0 ? notYetKicked : pool;
+
+  const weighted = candidates
+    .map((p) => ({ player: p, weight: p.overall + (p.position === "ATA" ? 8 : p.position === "MEI" ? 4 : 0) }))
+    .sort((a, b) => b.weight - a.weight);
+
+  // Sorteio ponderado pro topo da lista (Math.random()^2 concentra nos
+  // primeiros índices, mas ainda dá chance real pros demais) — não é
+  // sempre literalmente o "melhor" jogador, como no futebol de verdade.
+  const idx = Math.min(weighted.length - 1, Math.floor(Math.random() * Math.random() * weighted.length));
+  return weighted[idx].player;
+}
+
+/** Resultado de UMA cobrança — probabilidade ajustada pela qualidade do batedor vs. do goleiro adversário. */
+function simulateSingleKick(kicker: Player, goalkeeper: Player | undefined): PenaltyKick["result"] {
+  const gkSkill = goalkeeper?.overall ?? 78;
+  const baseGoalChance = 0.76; // conversão típica de pênaltis no futebol profissional
+  const adjust = (kicker.overall - gkSkill) / 500;
+  const goalChance = Math.max(0.55, Math.min(0.92, baseGoalChance + adjust));
+
+  if (Math.random() < goalChance) return "goal";
+  const missRoll = Math.random();
+  if (missRoll < 0.5) return "save"; // goleiro defendeu
+  if (missRoll < 0.75) return "post"; // na trave
+  return "miss"; // pra fora
+}
+
+/**
+ * Disputa de pênaltis completa, seguindo as regras oficiais: 5 cobranças por
+ * equipe alternadas (casa primeiro), encerramento antecipado assim que um
+ * lado se torna matematicamente irretomável, e morte súbita (uma cobrança
+ * cada, decide na primeira diferença) se seguir empatado após as 5 de cada.
+ * O goleiro titular nunca é substituído. Retorna cada cobrança em ordem,
+ * pra toda a sala poder assistir à mesma disputa, sincronizada.
+ *
+ * Única implementação de pênaltis do jogo — reutilizada pela Copa, pela
+ * disputa contra o rebaixamento e pelas semifinais/final do Liga + Mata-Mata.
+ */
+export function simulatePenaltyShootout(homeTeam: Team, awayTeam: Team): PenaltyShootoutResult {
+  const kicks: PenaltyKick[] = [];
+  const homeKicked = new Set<string>();
+  const awayKicked = new Set<string>();
+  const homeGK = homeTeam.starters.find((p) => p.position === "GOL");
+  const awayGK = awayTeam.starters.find((p) => p.position === "GOL");
+
+  let homeGoals = 0;
+  let awayGoals = 0;
+  let homeTaken = 0;
+  let awayTaken = 0;
+  let kickNumber = 0;
+  let isHomeTurn = true;
+
+  // Fase regular: até 5 cobranças por equipe, casa sempre bate primeiro em
+  // cada rodada. Verifica encerramento antecipado depois de CADA cobrança.
+  while (homeTaken < 5 || awayTaken < 5) {
+    const isHome: boolean = isHomeTurn;
+    if (isHome && homeTaken >= 5) {
+      isHomeTurn = false;
+      continue;
+    }
+    if (!isHome && awayTaken >= 5) {
+      isHomeTurn = true;
+      continue;
+    }
+
+    const team = isHome ? homeTeam : awayTeam;
+    const kickedSet = isHome ? homeKicked : awayKicked;
+    const opponentGK = isHome ? awayGK : homeGK;
+
+    const kicker = pickPenaltyKicker(team, kickedSet);
+    kickedSet.add(kicker.id);
+    const result = simulateSingleKick(kicker, opponentGK);
+    if (result === "goal") {
+      if (isHome) homeGoals++;
+      else awayGoals++;
+    }
+    if (isHome) homeTaken++;
+    else awayTaken++;
+    kickNumber++;
+    kicks.push({ teamId: team.id, playerName: kicker.name, result, kickNumber });
+
+    const homeRemaining = 5 - homeTaken;
+    const awayRemaining = 5 - awayTaken;
+    if (homeGoals > awayGoals + awayRemaining) break; // casa já não pode ser alcançada
+    if (awayGoals > homeGoals + homeRemaining) break; // visitante já não pode ser alcançado
+
+    isHomeTurn = !isHome;
+  }
+
+  // Morte súbita: uma cobrança pra cada lado, decide assim que alguém errar
+  // e o outro marcar. Continua indefinidamente até haver um vencedor.
+  while (homeGoals === awayGoals) {
+    const homeKicker = pickPenaltyKicker(homeTeam, homeKicked);
+    homeKicked.add(homeKicker.id);
+    const homeResult = simulateSingleKick(homeKicker, awayGK);
+    if (homeResult === "goal") homeGoals++;
+    kickNumber++;
+    kicks.push({ teamId: homeTeam.id, playerName: homeKicker.name, result: homeResult, kickNumber });
+
+    const awayKicker = pickPenaltyKicker(awayTeam, awayKicked);
+    awayKicked.add(awayKicker.id);
+    const awayResult = simulateSingleKick(awayKicker, homeGK);
+    if (awayResult === "goal") awayGoals++;
+    kickNumber++;
+    kicks.push({ teamId: awayTeam.id, playerName: awayKicker.name, result: awayResult, kickNumber });
+  }
+
+  return { kicks, homeGoals, awayGoals, winnerId: homeGoals > awayGoals ? homeTeam.id : awayTeam.id };
+}
+
+/** @deprecated use `simulatePenaltyShootout` — mantido só pra não quebrar quem ainda importa este nome. */
 export function resolvePenalties(homeTeam: Team, awayTeam: Team): { homeGoals: number; awayGoals: number; winnerId: string } {
-  const diff = homeTeam.overall - awayTeam.overall;
-  const homeWinChance = Math.max(0.3, Math.min(0.7, 0.5 + diff / 100));
-  const homeWins = Math.random() < homeWinChance;
-
-  const winnerGoals = randomBetween(3, 5);
-  const loserGoals = randomBetween(0, winnerGoals - 1);
-
-  return {
-    homeGoals: homeWins ? winnerGoals : loserGoals,
-    awayGoals: homeWins ? loserGoals : winnerGoals,
-    winnerId: homeWins ? homeTeam.id : awayTeam.id,
-  };
+  return simulatePenaltyShootout(homeTeam, awayTeam);
 }
 
 const PHASE_LABELS: Record<Exclude<CupPhase, "groups" | "finished">, string> = {
+  relegation: "Disputa contra o Rebaixamento",
   quarterfinal: "Quartas de Final",
   semifinal: "Semifinal",
   final: "Final",

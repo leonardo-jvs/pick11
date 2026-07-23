@@ -74,9 +74,10 @@ abordar especificamente.
    - `supabase/migrations/0001_rooms_and_lobby.sql`
    - `supabase/migrations/0002_draft_state.sql`
    - `supabase/migrations/0003_competition_state.sql`
+   - `supabase/migrations/0004_league_knockout_mode.sql` (novo modo "Liga + Mata-Mata" — se seu projeto já rodou as três primeiras antes, só precisa rodar esta)
 3. Clique em **Run** para cada um. Deve aparecer "Success. No rows returned".
 
-Se preferir a [Supabase CLI](https://supabase.com/docs/guides/cli): os três
+Se preferir a [Supabase CLI](https://supabase.com/docs/guides/cli): os
 arquivos já estão no formato esperado em `supabase/migrations/`, então
 `supabase db push` (com o projeto linkado) roda todos na ordem certa.
 

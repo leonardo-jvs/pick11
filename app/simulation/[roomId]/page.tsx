@@ -34,7 +34,7 @@ const FILLERS = [
   "A torcida pede mais intensidade.",
 ];
 
-function buildBeats(match: Match, penalties?: { home: number; away: number }): Beat[] {
+function buildBeats(match: Match): Beat[] {
   const beats: Beat[] = [{ minute: "0'", text: "A bola está rolando!" }];
   const sortedEvents = [...match.events].sort((a, b) => a.minute - b.minute);
   let homeScore = 0;
@@ -64,14 +64,6 @@ function buildBeats(match: Match, penalties?: { home: number; away: number }): B
     lastMinute = evt.minute;
   }
 
-  if (penalties) {
-    beats.push({
-      minute: "PÊN",
-      text: `🥅 Nos pênaltis!\n${match.homeTeamName} ${penalties.home} x ${penalties.away} ${match.awayTeamName}`,
-      isGoal: true,
-    });
-  }
-
   beats.push({ minute: "90'", text: "Fim de jogo." });
   return beats;
 }
@@ -95,7 +87,8 @@ export default function SimulationPage() {
   const inKnockoutStage = !!cupState;
 
   const [visibleCount, setVisibleCount] = useState(0);
-  const [phase, setPhase] = useState<"narration" | "stats">("narration");
+  const [phase, setPhase] = useState<"narration" | "penalties" | "stats">("narration");
+  const [visiblePenaltyKicks, setVisiblePenaltyKicks] = useState(0);
   const [showStats, setShowStats] = useState(false);
   const [reconnecting, setReconnecting] = useState(true);
   const navigatedRef = useRef(false);
@@ -133,28 +126,56 @@ export default function SimulationPage() {
 
   useCompetitionRealtime(room?.id ?? null);
 
+  // Liga + Mata-Mata: a partir do rebaixamento/mata-mata, TODOS os
+  // participantes acompanham a MESMA partida decisiva — inclusive quem não
+  // está jogando nela. `currentDecisiveIndex` já foi incrementado pelo
+  // servidor assim que a partida foi resolvida, então a partida que "acabou
+  // de acontecer" (a que esta tela narra) é sempre a de índice
+  // `currentDecisiveIndex - 1`, nunca o índice atual (esse é o da PRÓXIMA
+  // partida, que é assunto da Pré-Partida, não daqui).
+  const isDecisiveSequence = isLeagueKnockout && !!cupState?.decisiveOrder;
+  const justResolvedKnockoutEntry = useMemo(() => {
+    if (!isDecisiveSequence || !cupState?.decisiveOrder || cupState.currentDecisiveIndex === undefined || cupState.currentDecisiveIndex <= 0) {
+      return null;
+    }
+    const justResolvedId = cupState.decisiveOrder[cupState.currentDecisiveIndex - 1];
+    return cupState.knockout.find((m) => m.id === justResolvedId) ?? null;
+  }, [isDecisiveSequence, cupState]);
+
   // A minha partida é sempre a mais recente do histórico envolvendo meu time
   // — o resultado já foi calculado e gravado pelo servidor (Pré-Partida, ao
   // cronômetro compartilhado chegar a zero), aqui só lemos e narramos.
+  // Exceção: na sequência decisiva do Liga + Mata-Mata, TODO MUNDO narra a
+  // MESMA partida (a que acabou de ser resolvida), não a "minha".
   const userMatch = useMemo(() => {
+    if (isDecisiveSequence) {
+      if (!justResolvedKnockoutEntry?.matchId) return null;
+      return matches.find((m) => m.id === justResolvedKnockoutEntry.matchId) ?? null;
+    }
     if (!userTeam) return null;
     const mine = matches.filter((m) => m.homeTeamId === userTeam.id || m.awayTeamId === userTeam.id);
     return mine.length > 0 ? mine[mine.length - 1] : null;
-  }, [matches, userTeam?.id]);
+  }, [matches, userTeam?.id, isDecisiveSequence, justResolvedKnockoutEntry?.matchId]);
 
   const knockoutEntry = useMemo(() => {
     if (!cupState || !userMatch) return null;
     return cupState.knockout.find((k) => k.matchId === userMatch.id) ?? null;
   }, [cupState, userMatch]);
 
+  // Sou eu quem jogou essa partida, ou só estou acompanhando (Liga+Mata-Mata)?
+  const isSpectatingThisMatch = isDecisiveSequence && !!knockoutEntry && !!userTeam && knockoutEntry.homeId !== userTeam.id && knockoutEntry.awayId !== userTeam.id;
+
   const penaltyResult = knockoutEntry?.wentToPenalties && knockoutEntry.penaltyScore
     ? { home: knockoutEntry.penaltyScore[0], away: knockoutEntry.penaltyScore[1] }
     : null;
 
-  const cupOutcome: "none" | "advance" | "champion" | "eliminated" = useMemo(() => {
+  const cupOutcome: "none" | "advance" | "champion" | "eliminated" | "relegated" = useMemo(() => {
     if (!inKnockoutStage || !userTeam || !cupState) return "none";
+    if (isSpectatingThisMatch) return "none"; // só assistindo — não é resultado pessoal
     if (knockoutEntry) {
-      if (knockoutEntry.winnerId !== userTeam.id) return "eliminated";
+      if (knockoutEntry.winnerId !== userTeam.id) {
+        return knockoutEntry.phase === "relegation" ? "relegated" : "eliminated";
+      }
       return knockoutEntry.phase === "final" ? "champion" : "advance";
     }
     // Sem entrada no mata-mata: ou ainda estamos na fase de grupos (tudo bem,
@@ -168,21 +189,39 @@ export default function SimulationPage() {
       return "eliminated";
     }
     return "advance";
-  }, [inKnockoutStage, userTeam, cupState, knockoutEntry]);
+  }, [inKnockoutStage, userTeam, cupState, knockoutEntry, isSpectatingThisMatch]);
 
-  const beats = useMemo(() => (userMatch ? buildBeats(userMatch, penaltyResult ?? undefined) : []), [userMatch, penaltyResult]);
+  const beats = useMemo(() => (userMatch ? buildBeats(userMatch) : []), [userMatch]);
 
   // Narra os acontecimentos progressivamente durante ~5s
   useEffect(() => {
     if (beats.length === 0 || phase !== "narration") return;
     if (visibleCount >= beats.length) {
-      const toStats = setTimeout(() => setPhase("stats"), 400);
-      return () => clearTimeout(toStats);
+      const toNext = setTimeout(() => setPhase(penaltyResult && knockoutEntry?.penaltyKicks ? "penalties" : "stats"), 400);
+      return () => clearTimeout(toNext);
     }
     const interval = Math.max(350, Math.floor((LIVE_MATCH_CONFIG.NARRATION_SECONDS * 1000) / beats.length));
     const t = setTimeout(() => setVisibleCount((c) => c + 1), interval);
     return () => clearTimeout(t);
-  }, [beats, visibleCount, phase]);
+  }, [beats, visibleCount, phase, penaltyResult, knockoutEntry?.penaltyKicks]);
+
+  // Revela as cobranças de pênalti uma a uma, no mesmo padrão de pausa da
+  // narração normal — todos os participantes veem exatamente a mesma
+  // sequência, já que `penaltyKicks` vem sincronizado do servidor.
+  useEffect(() => {
+    if (phase !== "penalties" || !knockoutEntry?.penaltyKicks) return;
+    const kicks = knockoutEntry.penaltyKicks;
+    if (visiblePenaltyKicks >= kicks.length) {
+      const toStats = setTimeout(() => setPhase("stats"), 600);
+      return () => clearTimeout(toStats);
+    }
+    const t = setTimeout(() => setVisiblePenaltyKicks((c) => c + 1), 1100);
+    return () => clearTimeout(t);
+  }, [phase, knockoutEntry?.penaltyKicks, visiblePenaltyKicks]);
+
+  useEffect(() => {
+    setVisiblePenaltyKicks(0);
+  }, [knockoutEntry?.matchId]);
 
   // Depois das estatísticas, navega sozinho pra próxima etapa.
   // Mesma correção aplicada no Lobby: `userMatch`/`matches` podem trocar de
@@ -199,16 +238,16 @@ export default function SimulationPage() {
     (async () => {
       await new Promise((r) => setTimeout(r, LIVE_MATCH_CONFIG.STATS_SECONDS * 1000));
       setShowStats(false);
-      if (isLeagueKnockout) {
-        // Liga + Mata-Mata usa a MESMA tela de encerramento da Liga normal —
-        // campeão vem do mata-mata, mas a tela é sempre leagueFinal, nunca
-        // cupFinal (ver app/league-final, que sabe distinguir os dois casos).
-        if (inKnockoutStage && (cupOutcome === "champion" || cupOutcome === "eliminated")) {
+      if (isDecisiveSequence) {
+        // Liga + Mata-Mata: a navegação é GLOBAL, não depende do resultado
+        // pessoal de ninguém — todos avançam juntos pra próxima partida da
+        // fila (rebaixamento -> semifinais -> final), e só vão pro
+        // encerramento quando a fila inteira (as 5 partidas) tiver acabado.
+        // Usa a MESMA tela de encerramento da Liga normal, nunca a da Copa.
+        if (cupState?.phase === "finished") {
           router.push(ROUTES.leagueFinal(room.id));
-        } else if (inKnockoutStage) {
-          router.push(ROUTES.preMatch(room.id, 1));
         } else {
-          router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
+          router.push(ROUTES.preMatch(room.id, 1));
         }
       } else if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
@@ -222,7 +261,7 @@ export default function SimulationPage() {
         router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
       }
     })();
-  }, [phase, room, isCup, isLeagueKnockout, inKnockoutStage, cupOutcome, userMatch, router]);
+  }, [phase, room, isCup, isLeagueKnockout, isDecisiveSequence, inKnockoutStage, cupState?.phase, cupOutcome, userMatch, router]);
 
   if (reconnecting) {
     return (
@@ -254,11 +293,8 @@ export default function SimulationPage() {
   const isHome = userMatch.homeTeamId === userTeam.id;
   const userScore = isHome ? userMatch.homeScore : userMatch.awayScore;
   const opponentScore = isHome ? userMatch.awayScore : userMatch.homeScore;
-  const opponentName = isHome ? userMatch.awayTeamName : userMatch.homeTeamName;
   const userGroup = isCup && cupState ? cupState.groups.find((g) => g.teamIds.includes(userTeam.id)) ?? null : null;
   const statsStandings = isCup ? (userGroup ? computeGroupStandings(userGroup, teams, matches) : []) : computeStandings(teams, matches, userTeam.id);
-  const userBoost = (isHome ? userMatch.homeBoost : userMatch.awayBoost) as Boost | undefined;
-  const opponentBoost = (isHome ? userMatch.awayBoost : userMatch.homeBoost) as Boost | undefined;
 
   return (
     <Screen center>
@@ -266,8 +302,9 @@ export default function SimulationPage() {
         {phase === "narration" ? (
           <div className="flex flex-col items-center">
             <p className="mb-1 font-sans text-xs text-text-tertiary">
-              {userTeam.clubName} <span className="text-text-tertiary">x</span> {opponentName}
+              {userMatch.homeTeamName} <span className="text-text-tertiary">x</span> {userMatch.awayTeamName}
             </p>
+            {isSpectatingThisMatch && <p className="mb-2 font-mono text-[10px] text-teal-bright">Você está assistindo</p>}
             <div className="mb-4 flex size-2 items-center justify-center">
               <span className="size-2 animate-pulse rounded-full bg-danger" />
             </div>
@@ -297,13 +334,48 @@ export default function SimulationPage() {
               ))}
             </div>
           </div>
+        ) : phase === "penalties" ? (
+          <div className="flex flex-col items-center">
+            <p className="mb-1 font-sans text-xs text-text-tertiary">
+              {userMatch.homeTeamName} <span className="text-text-tertiary">x</span> {userMatch.awayTeamName}
+            </p>
+            <p className="mb-4 font-display text-lg tracking-wide text-gold">⚽ Disputa de Pênaltis</p>
+            <div className="min-h-[220px] w-full space-y-3 overflow-hidden">
+              {(knockoutEntry?.penaltyKicks ?? []).slice(0, visiblePenaltyKicks).map((kick, i) => {
+                const kicksSoFar = (knockoutEntry?.penaltyKicks ?? []).slice(0, i + 1);
+                const homeGoals = kicksSoFar.filter((k) => k.teamId === userMatch.homeTeamId && k.result === "goal").length;
+                const awayGoals = kicksSoFar.filter((k) => k.teamId === userMatch.awayTeamId && k.result === "goal").length;
+                const teamName = kick.teamId === userMatch.homeTeamId ? userMatch.homeTeamName : userMatch.awayTeamName;
+                const resultText =
+                  kick.result === "goal" ? "GOOOOOOL!" : kick.result === "save" ? "DEFENDEU!" : kick.result === "post" ? "NA TRAVE!" : "PRA FORA!";
+                return (
+                  <div
+                    key={i}
+                    className={cn(
+                      "animate-fade-up rounded-card border px-3 py-2.5 text-center",
+                      kick.result === "goal" ? "border-gold/50 bg-gold/10" : "border-border-subtle bg-surface"
+                    )}
+                  >
+                    <p className="font-mono text-[10px] uppercase tracking-wide text-text-tertiary">{teamName}</p>
+                    <p className="mt-0.5 font-sans text-sm text-text-secondary">{kick.playerName} foi para a cobrança...</p>
+                    <p className={cn("mt-0.5 font-sans text-base font-bold", kick.result === "goal" ? "text-gold" : "text-danger")}>{resultText}</p>
+                    <p className="mt-0.5 font-mono text-xs text-text-tertiary">
+                      Placar: {homeGoals} x {awayGoals}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         ) : (
           <div>
-            {(() => {
-              const outcome = userScore > opponentScore ? "Vitória" : userScore < opponentScore ? "Derrota" : "Empate";
-              const outcomeColor = outcome === "Vitória" ? "text-success" : outcome === "Derrota" ? "text-danger" : "text-warning";
-              return <p className={cn("mb-1 text-center font-display text-xl tracking-wide", outcomeColor)}>{outcome}</p>;
-            })()}
+            {!isSpectatingThisMatch && (
+              (() => {
+                const outcome = userScore > opponentScore ? "Vitória" : userScore < opponentScore ? "Derrota" : "Empate";
+                const outcomeColor = outcome === "Vitória" ? "text-success" : outcome === "Derrota" ? "text-danger" : "text-warning";
+                return <p className={cn("mb-1 text-center font-display text-xl tracking-wide", outcomeColor)}>{outcome}</p>;
+              })()
+            )}
             <p className="mb-4 text-center font-sans text-xs text-text-tertiary">
               {isCup ? "Copa · Fim de jogo" : inKnockoutStage ? "Mata-mata · Fim de jogo" : `Rodada ${userMatch.round} · Fim de jogo`}
             </p>
@@ -346,19 +418,22 @@ export default function SimulationPage() {
             <div className="mb-5 rounded-card border border-border-subtle bg-surface p-3">
               <p className="mb-1.5 font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Bônus utilizado</p>
               <p className="font-sans text-sm text-text-secondary">
-                <span className="font-semibold text-text-primary">{userMatch.homeTeamId === userTeam.id ? userTeam.clubName : opponentName}:</span>{" "}
-                {BOOST_LABELS[(isHome ? userBoost : opponentBoost) ?? "Nenhum"]}
+                <span className="font-semibold text-text-primary">{userMatch.homeTeamName}:</span>{" "}
+                {BOOST_LABELS[(userMatch.homeBoost as Boost | undefined) ?? "Nenhum"]}
                 <span className="mx-2 text-text-tertiary">×</span>
-                <span className="font-semibold text-text-primary">{userMatch.awayTeamId === userTeam.id ? userTeam.clubName : opponentName}:</span>{" "}
-                {BOOST_LABELS[(isHome ? opponentBoost : userBoost) ?? "Nenhum"]}
+                <span className="font-semibold text-text-primary">{userMatch.awayTeamName}:</span>{" "}
+                {BOOST_LABELS[(userMatch.awayBoost as Boost | undefined) ?? "Nenhum"]}
               </p>
             </div>
 
             {inKnockoutStage && cupOutcome === "eliminated" && (
-              <p className="mb-3 text-center font-sans text-sm font-semibold text-danger">Eliminado da Copa</p>
+              <p className="mb-3 text-center font-sans text-sm font-semibold text-danger">Eliminado</p>
+            )}
+            {inKnockoutStage && cupOutcome === "relegated" && (
+              <p className="mb-3 text-center font-sans text-sm font-semibold text-danger">⬇️ Rebaixado</p>
             )}
             {inKnockoutStage && cupOutcome === "champion" && (
-              <p className="mb-3 text-center font-sans text-sm font-semibold text-gold">🏆 Campeão da Copa!</p>
+              <p className="mb-3 text-center font-sans text-sm font-semibold text-gold">🏆 Campeão!</p>
             )}
 
             <button onClick={() => setShowStats(true)} className="block w-full text-center font-sans text-sm text-gold">
