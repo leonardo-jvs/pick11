@@ -226,6 +226,59 @@ export async function refreshRoundDeadlineIfStale(roomId: string, snapshot: Comp
 }
 
 /** Quais times humanos têm confronto na rodada (Liga) ou fase atual (Copa) — usado pro indicador de prontidão e pra decidir quando simular. */
+/**
+ * Liga + Mata-Mata: chamada exclusivamente pelo Host, a partir da tela de
+ * encerramento da Liga, ao clicar em "Iniciar Mata-Mata". Monta os
+ * confrontos da disputa contra o rebaixamento (7ºx10º, 8ºx9º) e da
+ * semifinal (1ºx4º, 2ºx3º) — exatamente a mesma lógica que antes rodava
+ * automaticamente ao fim da 18ª rodada, só que agora sob confirmação
+ * explícita do host, o que elimina a corrida que travava clientes em
+ * "Aguardando o resultado da rodada...".
+ *
+ * Protegida em duas camadas:
+ * - `if (snapshot.cupState) return true`: idempotente — se o host já
+ *   iniciou (ou outra aba do próprio host tentar de novo), não faz nada e
+ *   reporta sucesso, nunca gera um segundo chaveamento.
+ * - CAS via `snapshot.version`: se por algum motivo dois clientes tentarem
+ *   ao mesmo tempo, só o primeiro consegue escrever; o segundo recebe
+ *   `false` e o Realtime traz o estado certo pra ele.
+ */
+export async function startLeagueKnockoutPhase(roomId: string, snapshot: CompetitionSnapshot): Promise<boolean> {
+  if (snapshot.cupState) return true;
+
+  const standings = computeStandings(snapshot.teams, snapshot.matches, snapshot.teams[0]?.id ?? "");
+  const top4Ids = standings.slice(0, LEAGUE_KNOCKOUT_CONFIG.QUALIFIERS).map((s) => s.teamId);
+  // Os 4 últimos, na ordem 7º,8º,9º,10º — buildInitialBracket pareia
+  // primeiro-com-último (7ºx10º) e segundo-com-penúltimo (8ºx9º) da lista
+  // recebida, exatamente a mesma regra já usada pro chaveamento do título.
+  const bottom4Ids = standings.slice(-LEAGUE_KNOCKOUT_CONFIG.RELEGATION_COUNT * 2).map((s) => s.teamId);
+
+  const relegationMatches = buildInitialBracket(bottom4Ids, "relegation");
+  const semifinalMatches = buildInitialBracket(top4Ids, "semifinal");
+  const finalPlaceholder = { id: generateId("ko"), phase: "final" as const, slot: 0, homeId: null, awayId: null };
+
+  const knockoutCupState: CupState = {
+    totalTeams: LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS,
+    groupCount: 0,
+    groups: [],
+    groupFixtures: [],
+    currentGroupRound: 3,
+    // Fase "visível" inicial é a primeira da fila — a disputa contra o
+    // rebaixamento sempre acontece antes das partidas do título.
+    phase: "relegation",
+    knockout: [...relegationMatches, ...semifinalMatches, finalPlaceholder],
+    decisiveOrder: [relegationMatches[0].id, relegationMatches[1].id, semifinalMatches[0].id, semifinalMatches[1].id, finalPlaceholder.id],
+    currentDecisiveIndex: 0,
+  };
+
+  const isMultiplayer = snapshot.teams.filter((t) => t.isHuman).length > 1;
+  return submitCompetitionState(roomId, snapshot.version, {
+    cup_state: knockoutCupState,
+    round_readiness: {},
+    round_deadline: computePreMatchDeadline(isMultiplayer),
+  });
+}
+
 export function getHumanTeamIdsForRound(snapshot: CompetitionSnapshot): string[] {
   if (snapshot.cupState) {
     const cup = snapshot.cupState;
@@ -479,39 +532,31 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
   // acima (idêntico ao da Copa) assume o resto sozinho — nenhuma lógica nova
   // de simulação, só a transição. Liga normal (20 times) nunca passa por
   // aqui, então seu comportamento de "encerrar ao final" continua idêntico.
+  // Ao terminar a última rodada de uma liga de 10 times, NÃO monta mais o
+  // mata-mata automaticamente aqui — só marca que a fase de liga terminou
+  // (current_round passa da última rodada da liga, round_deadline para).
+  // O host precisa confirmar explicitamente "Iniciar Mata-Mata" na tela de
+  // encerramento da Liga (ver `startLeagueKnockoutPhase` mais abaixo) antes
+  // de qualquer confronto eliminatório existir.
+  //
+  // Por quê: a versão anterior montava o cupState (com decisiveOrder já
+  // preenchido) no MESMO instante em que o resultado da rodada 18 chegava
+  // pro jogador — a Simulação, ao ver `cupState.decisiveOrder` aparecer,
+  // tentava mostrar "a partida decisiva que acabou de ser resolvida", mas
+  // nenhuma tinha sido jogada ainda (a fila só tinha o índice 0, nunca
+  // incrementado) — resultado: `userMatch` ficava `null` pra sempre, e a
+  // tela travava em "Aguardando o resultado da rodada...". Separar em duas
+  // etapas elimina essa corrida por construção: enquanto o host não confirma,
+  // cupState continua null, e todo mundo vê normalmente o próprio resultado
+  // da rodada 18 antes de qualquer coisa do mata-mata existir.
   if (isLastRound && teams.length === LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS) {
-    const standings = computeStandings(updatedTeams, allMatches, updatedTeams[0]?.id ?? "");
-    const top4Ids = standings.slice(0, LEAGUE_KNOCKOUT_CONFIG.QUALIFIERS).map((s) => s.teamId);
-    // Os 4 últimos, na ordem 7º,8º,9º,10º — buildInitialBracket pareia
-    // primeiro-com-último (7ºx10º) e segundo-com-penúltimo (8ºx9º) da lista
-    // recebida, exatamente a mesma regra já usada pro chaveamento do título.
-    const bottom4Ids = standings.slice(-LEAGUE_KNOCKOUT_CONFIG.RELEGATION_COUNT * 2).map((s) => s.teamId);
-
-    const relegationMatches = buildInitialBracket(bottom4Ids, "relegation");
-    const semifinalMatches = buildInitialBracket(top4Ids, "semifinal");
-    const finalPlaceholder = { id: generateId("ko"), phase: "final" as const, slot: 0, homeId: null, awayId: null };
-
-    const knockoutCupState: CupState = {
-      totalTeams: LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS,
-      groupCount: 0,
-      groups: [],
-      groupFixtures: [],
-      currentGroupRound: 3,
-      // Fase "visível" inicial é a primeira da fila — a disputa contra o
-      // rebaixamento sempre acontece antes das partidas do título.
-      phase: "relegation",
-      knockout: [...relegationMatches, ...semifinalMatches, finalPlaceholder],
-      decisiveOrder: [relegationMatches[0].id, relegationMatches[1].id, semifinalMatches[0].id, semifinalMatches[1].id, finalPlaceholder.id],
-      currentDecisiveIndex: 0,
-    };
     return submitCompetitionState(roomId, snapshot.version, {
       teams: updatedTeams,
-      cup_state: knockoutCupState,
       matches: allMatches,
       current_round: snapshot.currentRound + 1,
       phase: "pre_match",
       round_readiness: {},
-      round_deadline: computePreMatchDeadline(teams.filter((t) => t.isHuman).length > 1),
+      round_deadline: null,
     });
   }
 

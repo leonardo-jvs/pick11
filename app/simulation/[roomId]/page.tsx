@@ -6,7 +6,7 @@ import { Screen } from "@/components/layout/Screen";
 import { Modal } from "@/components/ui/Modal";
 import { TopListTable } from "@/components/features/league/TopListTable";
 import { ROUTES } from "@/constants/routes";
-import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS, X1_CONFIG } from "@/constants/game";
+import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS, X1_CONFIG, LEAGUE_KNOCKOUT_CONFIG } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings, computeTopScorers, computeTopAssists } from "@/services/leagueService";
 import { computeGroupStandings } from "@/services/cupService";
@@ -261,6 +261,14 @@ export default function SimulationPage() {
         } else {
           router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
         }
+      } else if (isLeagueKnockout && userMatch.round >= LEAGUE_KNOCKOUT_CONFIG.TOTAL_LEAGUE_ROUNDS) {
+        // A 18ª rodada (última da fase de liga) acabou de ser vista, mas o
+        // mata-mata ainda não existe (cupState continua null até o host
+        // confirmar) — vai pra tela intermediária de encerramento da liga,
+        // nunca tenta continuar pra uma "rodada 19" que não existe no
+        // calendário (era exatamente isso que travava em "Aguardando o
+        // resultado da rodada...").
+        router.push(ROUTES.leagueTransition(room.id));
       } else if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
           router.push(ROUTES.cupFinal(room.id));

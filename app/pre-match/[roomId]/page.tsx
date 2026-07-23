@@ -261,13 +261,16 @@ export default function PreMatchPage() {
         const hasUnseenMatch = myMatchCountRef.current !== null && myMatches.length > myMatchCountRef.current;
         if (!hasUnseenMatch) router.push(ROUTES.cupFinal(room.id));
       }
-    } else if (schedule.length > 0 && !isLeagueKnockout) {
-      // Liga normal só — o Liga + Mata-Mata nunca cai aqui: o servidor já
-      // transiciona pro cupState na mesma escrita que fecha a última rodada
-      // da fase de liga, então `inKnockoutStage` vira true antes que essa
-      // checagem de "passou da última rodada" chegasse a disparar.
+    } else if (schedule.length > 0) {
       const totalRounds = Math.max(...schedule.map((f) => f.round));
-      if (currentRound > totalRounds) router.push(ROUTES.leagueFinal(room.id));
+      if (currentRound > totalRounds) {
+        // Liga + Mata-Mata: a fase de liga acabou, mas o host ainda não
+        // confirmou o início do mata-mata (cupState continua null até lá) —
+        // vai pra tela intermediária de encerramento da liga, nunca fica
+        // preso aqui tentando mostrar um confronto de uma rodada que não
+        // existe no calendário.
+        router.push(isLeagueKnockout ? ROUTES.leagueTransition(room.id) : ROUTES.leagueFinal(room.id));
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.id, teams.length, inKnockoutStage, isLeagueKnockout, cupState?.phase, schedule, currentRound, matches, userTeam?.id]);
