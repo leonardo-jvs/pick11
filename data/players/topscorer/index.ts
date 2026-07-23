@@ -5,31 +5,39 @@ import { Player } from "@/types/player";
  * ano como maior artilheiro do futebol brasileiro, considerando todas as
  * competições oficiais disputadas naquela temporada (não só o Brasileirão).
  *
- * IMPORTANTE — sobre a lista original pedida: 9 dos 23 artilheiros pedidos
- * caíam exatamente na mesma temporada e clube de uma carta que já existe no
- * banco (a maioria Auge, uma Comum) — faz sentido, já que a temporada de
- * artilheiro de um jogador costuma ser exatamente a que eu já tinha
- * escolhido pra representar o "Auge" dele em sprints anteriores. Como a
- * regra deste banco proíbe duas cartas representando a mesma temporada+clube
- * de um jogador (evita duplicata visual na Coleção/Packs), e esta tarefa
- * pediu explicitamente para NÃO remover nem alterar nenhuma carta existente,
- * as 9 que colidiam ficaram de fora, sem inventar nenhum dado pra "resolver"
- * o conflito:
- *   - Diego Tardelli 2009/Atlético Mineiro (já existe como Auge)
- *   - Kléber Pereira 2008/Santos (já existe como Auge)
- *   - Leandro Damião 2011/Internacional (já existe como Auge)
- *   - Luís Fabiano 2012/São Paulo (já existe como Auge)
- *   - Ricardo Oliveira 2015/Santos (já existe como Auge)
- *   - Diego Souza 2016/Sport (já existe como Auge)
- *   - Hulk 2021/Atlético Mineiro (já existe como Auge)
- *   - Germán Cano 2022/Fluminense (já existe como Auge)
- *   - Kaio Jorge 2025/Cruzeiro (já existe como Comum, mesma temporada atual)
+ * Regra de substituição: quando a temporada de artilheiro coincide
+ * exatamente com uma carta Comum ou Auge já existente do mesmo jogador no
+ * mesmo clube, essa carta é substituída por esta (nunca existem as duas ao
+ * mesmo tempo) — evita duplicata visual na Coleção/Packs. Lendária, Rei da
+ * América e Fim de Carreira NUNCA são substituídas, mesmo colidindo.
+ * Temporadas diferentes do mesmo jogador continuam existindo normalmente
+ * (ex: Fred 2012 continua Auge; só o Fred 2014 é Artilheiro da Temporada).
+ *
+ * Substituídas nesta correção (removidas de seus arquivos originais):
+ *   - Kaio Jorge 2025/Cruzeiro (era Comum)
+ *   - Hulk 2021/Atlético Mineiro (era Auge)
+ *   - Germán Cano 2022/Fluminense (era Auge)
+ *   - Diego Souza 2016/Sport (era Auge)
+ *   - Ricardo Oliveira 2015/Santos (era Auge)
+ *   - Luís Fabiano 2012/São Paulo (era Auge)
+ *   - Leandro Damião 2011/Internacional (era Auge)
+ *   - Kléber Pereira 2008/Santos (era Auge)
+ *   - Diego Tardelli 2009/Atlético Mineiro (era Auge)
  *
  * Faixa de Overall: sempre acima da Comum (80-88), competitiva com a Auge
  * (84-91), sempre abaixo da Lendária e do Rei da América (90+) — conforme
  * pedido, sem inflar além do que a temporada histórica justifica.
  */
 export const TOP_SCORER_PLAYERS: Player[] = [
+  { id: "ts-kaiojorge-2025", name: "Kaio Jorge", club: "Cruzeiro", season: "2025", position: "ATA", overall: 86, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 84, category: "topscorer" },
+  { id: "ts-hulk-2021", name: "Hulk", club: "Atlético Mineiro", season: "2021", position: "ATA", secondaryPositions: ["MEI"], overall: 89, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 89, category: "topscorer", athleteKey: "hulk" },
+  { id: "ts-germancano-2022", name: "Germán Cano", club: "Fluminense", season: "2022", position: "ATA", overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 83, category: "topscorer", athleteKey: "germancano" },
+  { id: "ts-diegosouza-2016", name: "Diego Souza", club: "Sport", season: "2016", position: "ATA", secondaryPositions: ["MEI"], overall: 86, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 82, category: "topscorer", athleteKey: "diegosouza" },
+  { id: "ts-ricardooliveira-2015", name: "Ricardo Oliveira", club: "Santos", season: "2015", position: "ATA", overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 83, category: "topscorer" },
+  { id: "ts-luisfabiano-2012", name: "Luís Fabiano", club: "São Paulo", season: "2012", position: "ATA", overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 85, category: "topscorer", athleteKey: "luisfabiano" },
+  { id: "ts-leandrodamiao-2011", name: "Leandro Damião", club: "Internacional", season: "2011", position: "ATA", overall: 87, attackStyle: "Cruzamentos", defenseStyle: "Bloco médio", physical: 88, category: "topscorer" },
+  { id: "ts-kleberpereira-2008", name: "Kléber Pereira", club: "Santos", season: "2008", position: "ATA", overall: 84, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 88, category: "topscorer" },
+  { id: "ts-diegotardelli-2009", name: "Diego Tardelli", club: "Atlético Mineiro", season: "2009", position: "ATA", overall: 85, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 88, category: "topscorer" },
   { id: "ts-yurialberto-2024", name: "Yuri Alberto", club: "Corinthians", season: "2024", position: "ATA", overall: 87, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 85, category: "topscorer" },
   { id: "ts-gustavo-2018", name: "Gustavo (Gustagol)", club: "Fortaleza", season: "2018", position: "ATA", overall: 87, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 84, category: "topscorer" },
   { id: "ts-henriquedourado-2017", name: "Henrique Dourado", club: "Fluminense", season: "2017", position: "ATA", overall: 88, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 84, category: "topscorer" },

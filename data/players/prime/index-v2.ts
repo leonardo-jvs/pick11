@@ -4,12 +4,10 @@ import { Player } from "@/types/player";
  * Nova coleção Auge (2026) — expansão da base de cartas históricas.
  */
 export const PRIME_PLAYERS_V2: Player[] = [
-  { id: "prime2-kleberpereira-2008", name: "Kléber Pereira", club: "Santos", season: "2008", position: "ATA", overall: 84, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
   { id: "prime2-borges-2011", name: "Borges", club: "Santos", season: "2011", position: "ATA", overall: 84, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
   { id: "prime2-andrelima-2010", name: "André Lima", club: "Grêmio", season: "2010", position: "ATA", overall: 84, attackStyle: "Cruzamentos", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
   { id: "prime2-rafaelmoura-2012", name: "Rafael Moura", club: "Fluminense", season: "2012", position: "ATA", overall: 84, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
   { id: "prime2-wellingtonpaulista-2009", name: "Wellington Paulista", club: "Cruzeiro", season: "2009", position: "ATA", overall: 84, attackStyle: "Posse", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
-  { id: "prime2-leandrodamiao-2011", name: "Leandro Damião", club: "Internacional", season: "2011", position: "ATA", overall: 84, attackStyle: "Cruzamentos", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
   { id: "prime2-alecsandro-2012", name: "Alecsandro", club: "Vasco da Gama", season: "2012", position: "ATA", overall: 84, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
   { id: "prime2-marcel-2003", name: "Marcel", club: "São Caetano", season: "2003", position: "ATA", overall: 84, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
   { id: "prime2-dill-2000", name: "Dill", club: "Goiás", season: "2000", position: "ATA", overall: 84, attackStyle: "Cruzamentos", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
@@ -19,7 +17,6 @@ export const PRIME_PLAYERS_V2: Player[] = [
   { id: "prime2-thiagoribeiro-2013", name: "Thiago Ribeiro", club: "Santos", season: "2013", position: "ATA", overall: 84, attackStyle: "Contra-ataque", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
   { id: "prime2-dagoberto-2011", name: "Dagoberto", club: "São Paulo", season: "2011", position: "ATA", overall: 84, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
   { id: "prime2-jorgehenrique-2013", name: "Jorge Henrique", club: "Corinthians", season: "2013", position: "ATA", overall: 84, attackStyle: "Cruzamentos", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
-  { id: "prime2-diegotardelli-2009", name: "Diego Tardelli", club: "Atlético Mineiro", season: "2009", position: "ATA", overall: 85, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
   { id: "prime2-douglas-2010", name: "Douglas", club: "Grêmio", season: "2010", position: "MEI", overall: 84, attackStyle: "Contra-ataque", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
   { id: "prime2-danilo-2013", name: "Danilo", club: "Corinthians", season: "2013", position: "MEI", overall: 85, attackStyle: "Posse", defenseStyle: "Pressão alta", physical: 88, category: "prime" },
   { id: "prime2-roger-2006", name: "Roger", club: "Corinthians", season: "2006", position: "MEI", overall: 84, attackStyle: "Posse", defenseStyle: "Bloco médio", physical: 88, category: "prime" },
