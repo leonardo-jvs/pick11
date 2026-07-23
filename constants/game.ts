@@ -33,6 +33,12 @@ export const LEAGUE_KNOCKOUT_CONFIG = {
   RELEGATION_COUNT: 2,
 } as const;
 
+/** X1 — confronto direto entre exatamente 2 jogadores: jogo de ida e volta, sem bônus, agregado decide (pênaltis se empatar). */
+export const X1_CONFIG = {
+  TOTAL_PLAYERS: 2,
+  TOTAL_LEGS: 2,
+} as const;
+
 export const PRE_MATCH_CONFIG = {
   TIMER_SECONDS: 10,
   MULTIPLAYER_TIMER_SECONDS: 5,

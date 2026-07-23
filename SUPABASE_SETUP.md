@@ -74,7 +74,8 @@ abordar especificamente.
    - `supabase/migrations/0001_rooms_and_lobby.sql`
    - `supabase/migrations/0002_draft_state.sql`
    - `supabase/migrations/0003_competition_state.sql`
-   - `supabase/migrations/0004_league_knockout_mode.sql` (novo modo "Liga + Mata-Mata" — se seu projeto já rodou as três primeiras antes, só precisa rodar esta)
+   - `supabase/migrations/0004_league_knockout_mode.sql` (novo modo "Liga + Mata-Mata")
+   - `supabase/migrations/0005_x1_mode.sql` (novo modo "X1" — se seu projeto já rodou as anteriores, só precisa rodar esta)
 3. Clique em **Run** para cada um. Deve aparecer "Success. No rows returned".
 
 Se preferir a [Supabase CLI](https://supabase.com/docs/guides/cli): os

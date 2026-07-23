@@ -2,7 +2,7 @@ import { Room } from "@/types/room";
 import { Team, Boost } from "@/types/team";
 import { Match } from "@/types/match";
 import { DraftState } from "@/types/draft";
-import { CupState, CupPhase, PenaltyKick } from "@/types/cup";
+import { CupState, CupPhase, CupKnockoutMatch, PenaltyKick } from "@/types/cup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getSquadForParticipant, assignReservesToHumans, getDraftFillerNames } from "@/services/draftService";
 import { generateBotSquads, generateSchedule, simulateMatch, computeStandings } from "@/services/leagueService";
@@ -11,7 +11,7 @@ import { computeTeamOverall, computeTeamCompatibilityStars } from "@/services/co
 import { applyBoost } from "@/services/matchPrepService";
 import { createFillerNameGuard } from "@/mocks/syntheticPlayers";
 import { generateId, randomBetween } from "@/lib/delay";
-import { PRE_MATCH_CONFIG, LEAGUE_KNOCKOUT_CONFIG } from "@/constants/game";
+import { PRE_MATCH_CONFIG, LEAGUE_KNOCKOUT_CONFIG, X1_CONFIG } from "@/constants/game";
 
 const HOME_ADVANTAGE = 1;
 
@@ -73,6 +73,7 @@ export async function startCompetitionOnServer(room: Room, draftState: DraftStat
   const supabase = getSupabaseClient();
   const isCup = room.gameMode === "cup";
   const isLeagueKnockout = room.gameMode === "league_knockout";
+  const isX1 = room.gameMode === "x1";
 
   // Idempotência: se a competição já existe (ex: uma tentativa anterior
   // conseguiu criar o registro mas falhou antes de atualizar o status da
@@ -128,7 +129,9 @@ export async function startCompetitionOnServer(room: Room, draftState: DraftStat
     ? determineCupTier(humanTeams.length).totalTeams
     : isLeagueKnockout
       ? LEAGUE_KNOCKOUT_CONFIG.TOTAL_CLUBS
-      : undefined;
+      : isX1
+        ? humanTeams.length // nunca gera bot no X1 — o alvo já é igual ao número de humanos
+        : undefined;
   const botTeams = await generateBotSquads(remainingPool, humanTeams.length, usedNames, targetTotalTeams, !isCup);
   const allTeams = [...humanTeams, ...botTeams];
 
@@ -510,6 +513,53 @@ export async function simulateRoundOnServer(roomId: string, snapshot: Competitio
       round_readiness: {},
       round_deadline: computePreMatchDeadline(teams.filter((t) => t.isHuman).length > 1),
     });
+  }
+
+  // X1: depois da volta (2ª rodada), o AGREGADO decide — nunca gol fora,
+  // nunca vantagem, nunca classificação. Se empatado, vai direto pra disputa
+  // de pênaltis (reaproveita exatamente a mesma `simulatePenaltyShootout` e
+  // a mesma estrutura `CupKnockoutMatch` que qualquer outro mata-mata do
+  // jogo já usa — a Simulação já sabe renderizar isso sem nenhuma mudança).
+  if (isLastRound && teams.length === X1_CONFIG.TOTAL_PLAYERS) {
+    const [teamA, teamB] = updatedTeams;
+    const aggA = allMatches.reduce((sum, m) => sum + (m.homeTeamId === teamA.id ? m.homeScore : m.awayTeamId === teamA.id ? m.awayScore : 0), 0);
+    const aggB = allMatches.reduce((sum, m) => sum + (m.homeTeamId === teamB.id ? m.homeScore : m.awayTeamId === teamB.id ? m.awayScore : 0), 0);
+
+    if (aggA === aggB) {
+      const lastLegMatch = results[results.length - 1];
+      const pk = simulatePenaltyShootout(teamA, teamB);
+      const decider: CupKnockoutMatch = {
+        id: generateId("ko"),
+        phase: "final",
+        slot: 0,
+        homeId: teamA.id,
+        awayId: teamB.id,
+        matchId: lastLegMatch.id,
+        winnerId: pk.winnerId,
+        wentToPenalties: true,
+        penaltyScore: [pk.homeGoals, pk.awayGoals],
+        penaltyKicks: pk.kicks,
+      };
+      const x1CupState: CupState = {
+        totalTeams: 2,
+        groupCount: 0,
+        groups: [],
+        groupFixtures: [],
+        currentGroupRound: 3,
+        phase: "finished",
+        knockout: [decider],
+      };
+      return submitCompetitionState(roomId, snapshot.version, {
+        teams: updatedTeams,
+        cup_state: x1CupState,
+        matches: allMatches,
+        current_round: snapshot.currentRound,
+        phase: "finished",
+        round_readiness: {},
+        round_deadline: null,
+      });
+    }
+    // Agregado não empatou: só encerra normalmente — cai no retorno genérico abaixo.
   }
 
   return submitCompetitionState(roomId, snapshot.version, {

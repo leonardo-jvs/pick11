@@ -63,6 +63,7 @@ export default function PreMatchPage() {
   const userTeam = useSessionStore((s) => s.userTeam());
 
   const isLeagueKnockout = room?.gameMode === "league_knockout";
+  const isX1 = room?.gameMode === "x1";
   // Fase de mata-mata de verdade: Copa pura sempre, ou Liga + Mata-Mata só
   // depois que a fase de liga termina e o servidor transiciona pro cupState
   // (mesmo bloco de simulação da Copa assume dali em diante). Comportamento
@@ -418,7 +419,11 @@ export default function PreMatchPage() {
             <p className="font-sans text-xs text-text-tertiary">
               {inKnockoutStage
                 ? cupFixtureInfo
-                : `Rodada ${currentRound} de ${isLeagueKnockout ? LEAGUE_KNOCKOUT_CONFIG.TOTAL_LEAGUE_ROUNDS : LEAGUE_CONFIG.TOTAL_ROUNDS}`}
+                : isX1
+                  ? currentRound === 1
+                    ? "Jogo de ida"
+                    : "Jogo de volta"
+                  : `Rodada ${currentRound} de ${isLeagueKnockout ? LEAGUE_KNOCKOUT_CONFIG.TOTAL_LEAGUE_ROUNDS : LEAGUE_CONFIG.TOTAL_ROUNDS}`}
             </p>
             <h1 className="font-display text-2xl tracking-wide text-text-primary">
               {isSpectating ? (
@@ -459,7 +464,18 @@ export default function PreMatchPage() {
 
         {!isSolo && <p className="-mt-2 mb-4 font-sans text-xs text-text-tertiary">A partida começa em 5 segundos.</p>}
 
-        {isSpectating ? (
+        {isX1 ? (
+          <div className="mb-4">
+            <p className="mb-1.5 font-sans text-xs text-text-tertiary">{userTeam.clubName}</p>
+            <div className="mb-4">
+              <FormationPitch formation={userTeam.tactics.formation} players={userTeam.starters} tactics={userTeam.tactics} />
+            </div>
+            <p className="mb-1.5 font-sans text-xs text-text-tertiary">{opponent?.clubName ?? "Adversário"}</p>
+            <div>
+              {opponent && <FormationPitch formation={opponent.tactics.formation} players={opponent.starters} tactics={opponent.tactics} />}
+            </div>
+          </div>
+        ) : isSpectating ? (
           <div className="mb-4 rounded-card border border-border-subtle bg-surface p-4">
             <p className="mb-3 text-center font-sans text-[10px] uppercase tracking-wide text-text-tertiary">
               {cupFixtureInfo ?? "Partida decisiva"}
@@ -554,7 +570,11 @@ export default function PreMatchPage() {
           </>
         )}
 
-        {isSpectating ? (
+        {isX1 ? (
+          <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
+            <p className="font-sans text-xs text-text-secondary">A partida começa automaticamente quando o cronômetro chegar a zero.</p>
+          </div>
+        ) : isSpectating ? (
           <div className="rounded-card border border-border-subtle bg-surface p-3 text-center">
             <p className="font-sans text-xs text-text-secondary">A partida começa automaticamente quando o cronômetro chegar a zero.</p>
           </div>

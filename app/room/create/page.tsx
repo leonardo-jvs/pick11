@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, EyeOff, Trophy, Swords, Layers } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Trophy, Swords, Layers, Target } from "lucide-react";
 import { Screen } from "@/components/layout/Screen";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -87,20 +87,25 @@ export default function CreateRoomPage() {
           </div>
         </div>
 
-        <Slider
-          label="Máximo de jogadores"
-          value={maxPlayers}
-          min={ROOM_CONFIG.MIN_PLAYERS}
-          max={ROOM_CONFIG.MAX_PLAYERS}
-          onChange={setMaxPlayers}
-        />
+        {gameMode !== "x1" && (
+          <Slider
+            label="Máximo de jogadores"
+            value={maxPlayers}
+            min={ROOM_CONFIG.MIN_PLAYERS}
+            max={ROOM_CONFIG.MAX_PLAYERS}
+            onChange={setMaxPlayers}
+          />
+        )}
 
         <div>
           <p className="mb-1.5 font-sans text-sm text-text-secondary">Modo de jogo</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => setGameMode("league")}
+              onClick={() => {
+                setGameMode("league");
+                if (gameMode === "x1") setMaxPlayers(8);
+              }}
               className={cn(
                 "flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
                 gameMode === "league" ? "border-gold bg-gold/10" : "border-border-subtle bg-surface hover:border-border-strong"
@@ -114,7 +119,10 @@ export default function CreateRoomPage() {
             </button>
             <button
               type="button"
-              onClick={() => setGameMode("cup")}
+              onClick={() => {
+                setGameMode("cup");
+                if (gameMode === "x1") setMaxPlayers(8);
+              }}
               className={cn(
                 "flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
                 gameMode === "cup" ? "border-teal bg-teal/10" : "border-border-subtle bg-surface hover:border-border-strong"
@@ -128,7 +136,10 @@ export default function CreateRoomPage() {
             </button>
             <button
               type="button"
-              onClick={() => setGameMode("league_knockout")}
+              onClick={() => {
+                setGameMode("league_knockout");
+                if (gameMode === "x1") setMaxPlayers(8);
+              }}
               className={cn(
                 "col-span-2 flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
                 gameMode === "league_knockout" ? "border-success bg-success/10" : "border-border-subtle bg-surface hover:border-border-strong"
@@ -140,6 +151,23 @@ export default function CreateRoomPage() {
               </span>
               <span className="font-sans text-[10px] leading-snug text-text-tertiary">
                 10 equipes, 18 rodadas (turno e returno) e depois os 4 primeiros disputam semifinal e final.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setGameMode("x1");
+                setMaxPlayers(2);
+              }}
+              className={cn(
+                "col-span-2 flex flex-col items-center gap-1.5 rounded-card border px-3 py-3 text-center transition-colors",
+                gameMode === "x1" ? "border-danger bg-danger/10" : "border-border-subtle bg-surface hover:border-border-strong"
+              )}
+            >
+              <Target size={18} className={gameMode === "x1" ? "text-danger" : "text-text-tertiary"} />
+              <span className={cn("font-sans text-xs font-semibold", gameMode === "x1" ? "text-danger" : "text-text-primary")}>X1</span>
+              <span className="font-sans text-[10px] leading-snug text-text-tertiary">
+                Confronto direto entre 2 jogadores — ida e volta, sem bônus, agregado decide (pênaltis se empatar).
               </span>
             </button>
           </div>
@@ -156,6 +184,11 @@ export default function CreateRoomPage() {
           {gameMode === "league_knockout" && (
             <p className="mt-2 font-mono text-[10px] text-text-tertiary">
               10 equipes · 18 rodadas · classificam os 4 primeiros · semifinal e final · rebaixamento dos 2 últimos
+            </p>
+          )}
+          {gameMode === "x1" && (
+            <p className="mt-2 font-mono text-[10px] text-text-tertiary">
+              Exatamente 2 jogadores · sem IA · sem bônus · ida e volta · pênaltis se o agregado empatar
             </p>
           )}
         </div>

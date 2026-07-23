@@ -20,4 +20,5 @@ export const ROUTES = {
   leagueFinal: (roomId: string) => `/league-final/${roomId}`,
   cupBracket: (roomId: string) => `/cup-bracket/${roomId}`,
   cupFinal: (roomId: string) => `/cup-final/${roomId}`,
+  x1Final: (roomId: string) => `/x1-final/${roomId}`,
 } as const;

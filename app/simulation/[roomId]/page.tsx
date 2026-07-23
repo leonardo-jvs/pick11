@@ -6,7 +6,7 @@ import { Screen } from "@/components/layout/Screen";
 import { Modal } from "@/components/ui/Modal";
 import { TopListTable } from "@/components/features/league/TopListTable";
 import { ROUTES } from "@/constants/routes";
-import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS } from "@/constants/game";
+import { LEAGUE_CONFIG, LIVE_MATCH_CONFIG, BOOST_LABELS, X1_CONFIG } from "@/constants/game";
 import { useSessionStore } from "@/store/sessionStore";
 import { computeStandings, computeTopScorers, computeTopAssists } from "@/services/leagueService";
 import { computeGroupStandings } from "@/services/cupService";
@@ -81,9 +81,11 @@ export default function SimulationPage() {
 
   const isCup = room?.gameMode === "cup";
   const isLeagueKnockout = room?.gameMode === "league_knockout";
+  const isX1 = room?.gameMode === "x1";
   // Mesmo sinal usado na Pré-Partida: fase de mata-mata de verdade é Copa
   // pura sempre, ou Liga + Mata-Mata só depois que o cupState existe
-  // (transição feita pelo servidor ao fim da 18ª rodada da liga).
+  // (transição feita pelo servidor ao fim da 18ª rodada da liga). No X1, o
+  // cupState só existe quando o agregado empatou (disputa de pênaltis).
   const inKnockoutStage = !!cupState;
 
   const [visibleCount, setVisibleCount] = useState(0);
@@ -249,6 +251,16 @@ export default function SimulationPage() {
         } else {
           router.push(ROUTES.preMatch(room.id, 1));
         }
+      } else if (isX1) {
+        // X1: só ida e volta, sem outros confrontos. Depois da 2ª rodada
+        // (empatado no agregado ou não — os dois casos já chegam aqui com a
+        // competição marcada como encerrada pelo servidor), vai direto pra
+        // tela final dedicada e simples do X1, nunca pra leagueFinal/cupFinal.
+        if (userMatch.round >= X1_CONFIG.TOTAL_LEGS) {
+          router.push(ROUTES.x1Final(room.id));
+        } else {
+          router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
+        }
       } else if (isCup) {
         if (cupOutcome === "champion" || cupOutcome === "eliminated") {
           router.push(ROUTES.cupFinal(room.id));
@@ -261,7 +273,7 @@ export default function SimulationPage() {
         router.push(ROUTES.preMatch(room.id, userMatch.round + 1));
       }
     })();
-  }, [phase, room, isCup, isLeagueKnockout, isDecisiveSequence, inKnockoutStage, cupState?.phase, cupOutcome, userMatch, router]);
+  }, [phase, room, isCup, isX1, isLeagueKnockout, isDecisiveSequence, inKnockoutStage, cupState?.phase, cupOutcome, userMatch, router]);
 
   if (reconnecting) {
     return (
@@ -305,6 +317,26 @@ export default function SimulationPage() {
               {userMatch.homeTeamName} <span className="text-text-tertiary">x</span> {userMatch.awayTeamName}
             </p>
             {isSpectatingThisMatch && <p className="mb-2 font-mono text-[10px] text-teal-bright">Você está assistindo</p>}
+            {isX1 &&
+              userMatch.round === X1_CONFIG.TOTAL_LEGS &&
+              (() => {
+                const leg1 = matches.find(
+                  (m) =>
+                    m.round === 1 &&
+                    ((m.homeTeamId === userMatch.homeTeamId && m.awayTeamId === userMatch.awayTeamId) ||
+                      (m.homeTeamId === userMatch.awayTeamId && m.awayTeamId === userMatch.homeTeamId))
+                );
+                if (!leg1) return null;
+                return (
+                  <div className="mb-4 w-full rounded-card border border-border-subtle bg-surface p-3 text-center">
+                    <p className="font-sans text-[10px] uppercase tracking-wide text-text-tertiary">Placar agregado</p>
+                    <p className="mt-1 font-sans text-sm text-text-secondary">
+                      {leg1.homeTeamName} {leg1.homeScore} <span className="text-text-tertiary">x</span> {leg1.awayScore} {leg1.awayTeamName}
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-teal-bright">Segundo jogo</p>
+                  </div>
+                );
+              })()}
             <div className="mb-4 flex size-2 items-center justify-center">
               <span className="size-2 animate-pulse rounded-full bg-danger" />
             </div>
