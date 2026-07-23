@@ -29,7 +29,7 @@ export function applyBoost(team: Team, boost: Boost): EffectiveTeam {
     squad = baseSquad.map((p) => ({ ...p, overall: Math.max(40, p.overall - BOOST_OVERALL_BONUS) }));
   }
 
-  let physical = team.physical;
+  const physical = team.physical;
   // "Poupar elenco" NÃO melhora o físico para esta partida — o retorno a 100%
   // só acontece depois que a partida termina (aplicado pela tela de Simulação).
 

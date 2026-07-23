@@ -42,7 +42,7 @@ const SECTIONS: Section[] = [
       <div className="space-y-2">
         <p>
           Cada participante escolhe <strong className="text-text-primary">11 titulares</strong>, um por um, em turnos
-          alternados (draft "cobra": a ordem se inverte a cada rodada, pra ninguém escolher sempre por último).
+          alternados (draft &ldquo;cobra&rdquo;: a ordem se inverte a cada rodada, pra ninguém escolher sempre por último).
         </p>
         <p>
           A cada turno aparecem <strong className="text-text-primary">6 cartas</strong> pra escolher — normalmente 2
@@ -191,7 +191,7 @@ const SECTIONS: Section[] = [
         </p>
         <p>
           Ao final, o campeão, o artilheiro, a melhor defesa e os times rebaixados (últimos colocados) aparecem na
-          tela de encerramento. O administrador pode iniciar uma "Nova Liga" na mesma sala, sem ninguém precisar
+          tela de encerramento. O administrador pode iniciar uma &ldquo;Nova Liga&rdquo; na mesma sala, sem ninguém precisar
           sair.
         </p>
       </div>

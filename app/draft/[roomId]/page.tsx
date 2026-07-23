@@ -100,6 +100,10 @@ export default function DraftPage() {
     if (currentTurn && turnObservedAtRef.current?.index !== currentTurn.index) {
       turnObservedAtRef.current = { index: currentTurn.index, at: Date.now() };
     }
+    // Intencional: só precisa reagir quando o ÍNDICE do turno muda, não a
+    // cada vez que o objeto `currentTurn` troca de referência por qualquer
+    // outro motivo (ex: re-render do draftState sem o turno ter avançado).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTurn?.index]);
 
   useEffect(() => {
@@ -146,7 +150,6 @@ export default function DraftPage() {
 
   useEffect(() => {
     if (isSelfTurn) toast.success("Sua vez de escolher!");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSelfTurn, currentTurn?.index]);
 
   useEffect(() => {

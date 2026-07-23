@@ -1,24 +1,8 @@
-import { Player, PlayerCategory, Position } from "@/types/player";
+import { Player } from "@/types/player";
 import { ALL_PLAYERS } from "@/data/players";
 
 export function getAllPlayers(): Player[] {
   return ALL_PLAYERS;
-}
-
-export function getPlayerById(id: string): Player | undefined {
-  return ALL_PLAYERS.find((p) => p.id === id);
-}
-
-export function getPlayersByCategory(category: PlayerCategory): Player[] {
-  return ALL_PLAYERS.filter((p) => (p.category ?? "common") === category);
-}
-
-export function getPlayersByPosition(position: Position): Player[] {
-  return ALL_PLAYERS.filter((p) => p.position === position || p.secondaryPositions?.includes(position));
-}
-
-export function getPlayersByClub(club: string): Player[] {
-  return ALL_PLAYERS.filter((p) => p.club === club);
 }
 
 function athleteIdentityKey(player: Player): string {

@@ -27,10 +27,6 @@ export function findBestSlot(
   return null;
 }
 
-export function isPlayerEligible(player: Player, formation: Formation, filledSlotIds: Set<string>): boolean {
-  return findBestSlot(player, formation, filledSlotIds) !== null;
-}
-
 /**
  * Posiciona uma lista de jogadores (sem slot pré-atribuído) nas coordenadas
  * corretas da formação — usado sempre que só temos o elenco (ex: Pré-Partida,

@@ -279,11 +279,6 @@ export function simulatePenaltyShootout(homeTeam: Team, awayTeam: Team): Penalty
   return { kicks, homeGoals, awayGoals, winnerId: homeGoals > awayGoals ? homeTeam.id : awayTeam.id };
 }
 
-/** @deprecated use `simulatePenaltyShootout` — mantido só pra não quebrar quem ainda importa este nome. */
-export function resolvePenalties(homeTeam: Team, awayTeam: Team): { homeGoals: number; awayGoals: number; winnerId: string } {
-  return simulatePenaltyShootout(homeTeam, awayTeam);
-}
-
 const PHASE_LABELS: Record<Exclude<CupPhase, "groups" | "finished">, string> = {
   relegation: "Disputa contra o Rebaixamento",
   quarterfinal: "Quartas de Final",

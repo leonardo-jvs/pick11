@@ -157,6 +157,10 @@ export default function SimulationPage() {
     if (!userTeam) return null;
     const mine = matches.filter((m) => m.homeTeamId === userTeam.id || m.awayTeamId === userTeam.id);
     return mine.length > 0 ? mine[mine.length - 1] : null;
+    // Intencional: só precisa reagir quando o ID do meu time muda, não a
+    // cada vez que o objeto `userTeam` troca de referência por qualquer
+    // outro motivo (ex: física/overall atualizados sem trocar de time).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matches, userTeam?.id, isDecisiveSequence, justResolvedKnockoutEntry?.matchId]);
 
   const knockoutEntry = useMemo(() => {
@@ -167,9 +171,10 @@ export default function SimulationPage() {
   // Sou eu quem jogou essa partida, ou só estou acompanhando (Liga+Mata-Mata)?
   const isSpectatingThisMatch = isDecisiveSequence && !!knockoutEntry && !!userTeam && knockoutEntry.homeId !== userTeam.id && knockoutEntry.awayId !== userTeam.id;
 
-  const penaltyResult = knockoutEntry?.wentToPenalties && knockoutEntry.penaltyScore
-    ? { home: knockoutEntry.penaltyScore[0], away: knockoutEntry.penaltyScore[1] }
-    : null;
+  const penaltyResult = useMemo(
+    () => (knockoutEntry?.wentToPenalties && knockoutEntry.penaltyScore ? { home: knockoutEntry.penaltyScore[0], away: knockoutEntry.penaltyScore[1] } : null),
+    [knockoutEntry?.wentToPenalties, knockoutEntry?.penaltyScore]
+  );
 
   const cupOutcome: "none" | "advance" | "champion" | "eliminated" | "relegated" = useMemo(() => {
     if (!inKnockoutStage || !userTeam || !cupState) return "none";
