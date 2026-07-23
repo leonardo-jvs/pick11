@@ -1,5 +1,5 @@
 import { DraftState, DraftPick, DraftTurn } from "@/types/draft";
-import { Player } from "@/types/player";
+import { Player, PlayerCategory } from "@/types/player";
 import { RoomParticipant, TeamTactics } from "@/types/team";
 import { buildLeaguePlayerPool } from "@/services/playerRepository";
 import { DRAFT_CONFIG } from "@/constants/game";
@@ -7,7 +7,7 @@ import { toDraftPlayerCard } from "@/services/compatibilityService";
 import { findBestSlot, getFormationSlots } from "@/services/formationService";
 import { generateFillerPlayers, createFillerNameGuard } from "@/mocks/syntheticPlayers";
 import { buildReserveSquad } from "@/services/squadBuilderService";
-import { drawWeightedByCategory } from "@/services/cardDrawService";
+import { drawWeightedByCategory, CARD_CATEGORY_WEIGHTS, X1_CARD_CATEGORY_WEIGHTS } from "@/services/cardDrawService";
 import { delay } from "@/lib/delay";
 
 function shuffle<T>(arr: T[]): T[] {
@@ -99,7 +99,13 @@ function ensurePoolHasEligiblePlayer(pool: Player[], formation: TeamTactics["for
  * `count` cartas) é que o resto das vagas usa a mecânica ~70% elegível / 30%
  * qualquer posição de sempre, pra manter o Draft imprevisível.
  */
-function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"], filledSlotIds: Set<string>, count: number): Player[] {
+function drawSmartCandidates(
+  pool: Player[],
+  formation: TeamTactics["formation"],
+  filledSlotIds: Set<string>,
+  count: number,
+  weights: Record<PlayerCategory, number> = CARD_CATEGORY_WEIGHTS
+): Player[] {
   const eligible: Player[] = [];
   const others: Player[] = [];
   for (const player of pool) {
@@ -126,17 +132,17 @@ function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"]
       (p) => !guaranteedIds.has(p.id) && (p.position === position || p.secondaryPositions?.includes(position))
     );
     if (candidatesForPosition.length === 0) continue;
-    const [chosen] = drawWeightedByCategory(candidatesForPosition, 1);
+    const [chosen] = drawWeightedByCategory(candidatesForPosition, 1, weights);
     guaranteed.push(chosen);
     guaranteedIds.add(chosen.id);
   }
 
-  // Ordena por raridade de categoria (95% comum / 4% Auge / 1% Lendária) dentro de
-  // cada grupo — mantém a mecânica 70/30 de elegibilidade exatamente como estava,
-  // só a ORDEM de prioridade dentro de cada grupo passa a respeitar a raridade.
+  // Ordena por raridade de categoria dentro de cada grupo — mantém a mecânica
+  // 70/30 de elegibilidade exatamente como estava, só a ORDEM de prioridade
+  // dentro de cada grupo passa a respeitar a raridade.
   const remainingEligible = eligible.filter((p) => !guaranteedIds.has(p.id));
-  const shuffledEligible = drawWeightedByCategory(remainingEligible, remainingEligible.length);
-  const shuffledOthers = drawWeightedByCategory(others, others.length);
+  const shuffledEligible = drawWeightedByCategory(remainingEligible, remainingEligible.length, weights);
+  const shuffledOthers = drawWeightedByCategory(others, others.length, weights);
 
   const remainingCount = count - guaranteed.length;
   const eligibleTarget = Math.round(remainingCount * 0.7);
@@ -162,7 +168,7 @@ function drawSmartCandidates(pool: Player[], formation: TeamTactics["formation"]
   return result;
 }
 
-export async function initDraft(roomId: string, humanParticipants: RoomParticipant[]): Promise<DraftState> {
+export async function initDraft(roomId: string, humanParticipants: RoomParticipant[], isX1 = false): Promise<DraftState> {
   await delay(600);
   draftFillerNameGuard = createFillerNameGuard(); // reseta a cada nova liga — nunca herda nomes de um draft anterior
   const order = humanParticipants.map((p) => p.id);
@@ -179,6 +185,12 @@ export async function initDraft(roomId: string, humanParticipants: RoomParticipa
   const firstFormation = firstTurn ? participantTactics[firstTurn.participantId].formation : undefined;
   if (firstFormation) pool = ensurePoolHasEligiblePlayer(pool, firstFormation, new Set());
 
+  // Perfil de raridade guardado no próprio estado — só o Draft do modo X1
+  // usa `X1_CARD_CATEGORY_WEIGHTS`; todo o resto (Singleplayer, Multiplayer
+  // tradicional, Liga, Copa, Liga + Mata-Mata) continua com
+  // `CARD_CATEGORY_WEIGHTS` de sempre, sem nenhuma mudança de comportamento.
+  const cardWeights = isX1 ? X1_CARD_CATEGORY_WEIGHTS : CARD_CATEGORY_WEIGHTS;
+
   return {
     roomId,
     order,
@@ -186,11 +198,12 @@ export async function initDraft(roomId: string, humanParticipants: RoomParticipa
     turns,
     currentTurnIndex: 0,
     pool,
-    candidates: firstFormation ? drawSmartCandidates(pool, firstFormation, new Set(), DRAFT_CONFIG.CANDIDATES_PER_ROUND) : [],
+    candidates: firstFormation ? drawSmartCandidates(pool, firstFormation, new Set(), DRAFT_CONFIG.CANDIDATES_PER_ROUND, cardWeights) : [],
     picks: [],
     filledSlots,
     timerSeconds: DRAFT_CONFIG.PICK_TIMER_SECONDS,
     isComplete: turns.length === 0,
+    isX1,
   };
 }
 
@@ -244,7 +257,8 @@ function advance(state: DraftState, turn: DraftTurn, entries: { playerId: string
     const nextFormation = state.participantTactics[nextTurn.participantId].formation;
     const nextFilledSlotIds = new Set(Object.keys(updatedFilledSlots[nextTurn.participantId] ?? {}));
     poolForNextTurn = ensurePoolHasEligiblePlayer(remainingPool, nextFormation, nextFilledSlotIds);
-    nextCandidates = drawSmartCandidates(poolForNextTurn, nextFormation, nextFilledSlotIds, DRAFT_CONFIG.CANDIDATES_PER_ROUND);
+    const cardWeights = state.isX1 ? X1_CARD_CATEGORY_WEIGHTS : CARD_CATEGORY_WEIGHTS;
+    nextCandidates = drawSmartCandidates(poolForNextTurn, nextFormation, nextFilledSlotIds, DRAFT_CONFIG.CANDIDATES_PER_ROUND, cardWeights);
   }
 
   return {

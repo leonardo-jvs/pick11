@@ -23,7 +23,7 @@ function computeDeadline(state: DraftState): string | null {
 export async function startDraftOnServer(room: Room): Promise<void> {
   const supabase = getSupabaseClient();
   const humans = room.participants.filter((p) => p.isHuman);
-  const initialState = await initDraft(room.id, humans);
+  const initialState = await initDraft(room.id, humans, room.gameMode === "x1");
 
   const { error: insertError } = await supabase.from("draft_states").insert({
     room_id: room.id,

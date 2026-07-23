@@ -31,4 +31,6 @@ export interface DraftState {
   filledSlots: Record<string, Record<string, Player>>;
   timerSeconds: number;
   isComplete: boolean;
+  /** Só true quando este Draft pertence a uma sala do modo X1 — usado só pra saber qual perfil de raridade das cartas usar em cada rodada (ver cardDrawService.ts). Não afeta nenhuma outra lógica do Draft. */
+  isX1?: boolean;
 }
