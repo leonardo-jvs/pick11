@@ -15,7 +15,7 @@ export type DefenseStyle = "Pressão alta" | "Bloco médio" | "Linha baixa";
  * (Pro Clubs está temporariamente desativado — ver data/players/proclubs/README.)
  * Ausente = tratado como "common" (retrocompatível com dados antigos/fictícios).
  */
-export type PlayerCategory = "common" | "kingofamerica" | "prime" | "veteran" | "legend" | "proclubs";
+export type PlayerCategory = "common" | "kingofamerica" | "topscorer" | "prime" | "veteran" | "legend" | "proclubs";
 
 export interface Player {
   id: string;

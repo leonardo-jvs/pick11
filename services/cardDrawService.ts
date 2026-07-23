@@ -11,16 +11,24 @@ import { Player, PlayerCategory } from "@/types/player";
 export const CARD_CATEGORY_WEIGHTS: Record<PlayerCategory, number> = {
   legend: 0.04,
   kingofamerica: 0.05,
+  topscorer: 0.05,
   prime: 0.1,
   veteran: 0.11,
   proclubs: 0,
-  common: 0.7,
+  common: 0.65,
 };
 
 function rollCategory(): PlayerCategory {
   const r = Math.random();
   let acc = 0;
-  for (const category of ["legend", "kingofamerica", "prime", "veteran", "proclubs"] as const) {
+  // Itera direto sobre as chaves de CARD_CATEGORY_WEIGHTS (na ordem em que
+  // foram declaradas ali, da mais rara pra mais comum) em vez de uma lista
+  // separada — assim, qualquer categoria nova adicionada aos pesos entra
+  // automaticamente no sorteio, sem risco de esquecer de atualizar uma
+  // segunda lista em outro lugar (foi exatamente isso que aconteceu com
+  // "topscorer": o peso existia, mas a categoria nunca era sorteada porque
+  // uma lista hardcoded separada, usada só aqui, não tinha sido atualizada).
+  for (const category of Object.keys(CARD_CATEGORY_WEIGHTS) as PlayerCategory[]) {
     acc += CARD_CATEGORY_WEIGHTS[category];
     if (r < acc) return category;
   }
@@ -38,6 +46,7 @@ export function drawWeightedByCategory(players: Player[], count: number): Player
   const buckets: Record<PlayerCategory, Player[]> = {
     common: [],
     kingofamerica: [],
+    topscorer: [],
     prime: [],
     veteran: [],
     legend: [],

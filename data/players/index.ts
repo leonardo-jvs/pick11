@@ -24,6 +24,7 @@ import { PRIME_PLAYERS } from "./prime";
 import { VETERAN_PLAYERS } from "./veteran";
 import { LEGEND_PLAYERS } from "./legends";
 import { KING_OF_AMERICA_PLAYERS } from "./kingofamerica";
+import { TOP_SCORER_PLAYERS } from "./topscorer";
 import { PROCLUBS_PLAYERS } from "./proclubs";
 
 /**
@@ -56,7 +57,7 @@ export const COMMON_PLAYERS: Player[] = [
   ...COMMON_PLAYERS_V2,
 ];
 
-export { PRIME_PLAYERS, VETERAN_PLAYERS, LEGEND_PLAYERS, KING_OF_AMERICA_PLAYERS, PROCLUBS_PLAYERS };
+export { PRIME_PLAYERS, VETERAN_PLAYERS, LEGEND_PLAYERS, KING_OF_AMERICA_PLAYERS, TOP_SCORER_PLAYERS, PROCLUBS_PLAYERS };
 
 /**
  * Todos os jogadores do banco, de todas as categorias ATIVAS.
@@ -67,4 +68,4 @@ export { PRIME_PLAYERS, VETERAN_PLAYERS, LEGEND_PLAYERS, KING_OF_AMERICA_PLAYERS
  * Para reativar no futuro, basta voltar a incluir `...PROCLUBS_PLAYERS` nesta
  * lista — nenhuma outra parte do sistema precisa mudar.
  */
-export const ALL_PLAYERS: Player[] = [...COMMON_PLAYERS, ...KING_OF_AMERICA_PLAYERS, ...PRIME_PLAYERS, ...VETERAN_PLAYERS, ...LEGEND_PLAYERS];
+export const ALL_PLAYERS: Player[] = [...COMMON_PLAYERS, ...KING_OF_AMERICA_PLAYERS, ...TOP_SCORER_PLAYERS, ...PRIME_PLAYERS, ...VETERAN_PLAYERS, ...LEGEND_PLAYERS];

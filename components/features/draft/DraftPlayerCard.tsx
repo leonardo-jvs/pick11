@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Sparkles, Crown, Gamepad2, Clock } from "lucide-react";
+import { Check, Sparkles, Crown, Gamepad2, Clock, Target } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { DraftPlayerCard as DraftPlayerCardType, Position, PlayerCategory } from "@/types/player";
@@ -83,6 +83,22 @@ const CATEGORY_THEME: Record<
     posOpen: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
     posClosed: "border-border-subtle bg-surface-elevated text-text-tertiary",
     badge: { label: "REI DA AMÉRICA", icon: <Crown size={10} />, className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/50" },
+  },
+  topscorer: {
+    // Laranja/vermelho — remete ao "artilheiro" (rede pegando fogo), visual
+    // bem distinto do roxo (Auge), azul (Fim de Carreira), dourado fosco com
+    // esmeralda (Rei da América) e dourado vivo (Lendária). Fácil de
+    // reconhecer de longe na Coleção junto com as demais.
+    cardBg: "bg-gradient-to-b from-orange-950/45 via-surface to-surface",
+    border: "border-orange-500/50",
+    glow: "shadow-[0_0_14px_rgba(249,115,22,0.25)]",
+    nameColor: "text-orange-300",
+    secondaryText: "text-text-secondary",
+    tertiaryText: "text-text-tertiary",
+    dividerBorder: "border-orange-600/30",
+    posOpen: "border-orange-500/40 bg-orange-500/15 text-orange-300",
+    posClosed: "border-border-subtle bg-surface-elevated text-text-tertiary",
+    badge: { label: "ARTILHEIRO DA TEMPORADA", icon: <Target size={10} />, className: "bg-orange-500/20 text-orange-300 border-orange-500/50" },
   },
   legend: {
     cardBg: "bg-legend-bg",
