@@ -98,21 +98,21 @@ const DEFENSIVE_POSITIONS: Position[] = ["GOL", "ZAG", "LAT", "VOL"];
  * variam esse comportamento pra criar bots que parecem outros jogadores.
  */
 const PERSONALITY_WEIGHTS: Record<BotPersonality, number[]> = {
-  elite: [0.85, 0.12, 0.03],
-  jovem: [0.55, 0.25, 0.2],
-  defensivo: [0.75, 0.18, 0.07],
-  equilibrado: [0.7, 0.2, 0.1],
-  aventureiro: [0.45, 0.25, 0.3],
+  elite: [0.78, 0.16, 0.06],
+  jovem: [0.48, 0.27, 0.25],
+  defensivo: [0.68, 0.2, 0.12],
+  equilibrado: [0.62, 0.23, 0.15],
+  aventureiro: [0.4, 0.25, 0.35],
 };
 
 /** Quantos jogadores 90+ um bot consegue acumular antes do algoritmo começar a preferir opções um pouco inferiores, quando existirem. */
 const ELITE_OVERALL_THRESHOLD = 90;
 const ELITE_CAP_BY_PERSONALITY: Record<BotPersonality, number> = {
-  elite: 8, // é o "estilo" desse bot ter muito craque — não faz sentido limitar como os outros
-  jovem: 4,
-  defensivo: 4,
-  equilibrado: 4,
-  aventureiro: 3,
+  elite: 7, // é o "estilo" desse bot ter muito craque — não faz sentido limitar como os outros
+  jovem: 3,
+  defensivo: 3,
+  equilibrado: 3,
+  aventureiro: 2,
 };
 
 function weightsForSlot(personality: BotPersonality, acceptedPositions: Position[]): number[] {
